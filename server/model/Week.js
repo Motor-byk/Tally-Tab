@@ -5,6 +5,7 @@ const Schema = mongoose.Schema;
 const expenseSchema = new Schema({
     amount: {type: Number, required: true, min: 1, validate: Number.isInteger}, // cents
     itemName: {type: String, required: true, trim: true},
+    category: {type: String, trim: true, default: ""}, // brand or store, optional
     spentAt: {type: Date, default: Date.now},
 })
 

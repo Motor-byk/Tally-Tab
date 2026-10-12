@@ -68,11 +68,11 @@ function App() {
         setSettingsOpen(false);
     }
 
-    async function handleAddExpense(itemName, amount) {
+    async function handleAddExpense(itemName, amount, category) {
         const data = await requestWeek("/api/week/current/expenses", {
             method: "POST",
             headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({itemName, amount}),
+            body: JSON.stringify({itemName, amount, category}),
         });
         setWeek(data);
     }

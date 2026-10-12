@@ -4,6 +4,7 @@ export default function Bottominput({onAdd}) {
 
     const [cost, setCost] = useState("");
     const [name, setName] = useState("")
+    const [category, setCategory] = useState("");
     const [error, setError] = useState("");
     const [submitting, setSubmitting] = useState(false);
 
@@ -17,9 +18,10 @@ export default function Bottominput({onAdd}) {
         setError("");
         setSubmitting(true);
         try {
-            await onAdd(name.trim(), amount);
+            await onAdd(name.trim(), amount, category.trim());
             setCost("");
             setName("");
+            setCategory("");
         } catch (err) {
             setError(err.message);
         } finally {
@@ -39,6 +41,11 @@ export default function Bottominput({onAdd}) {
                     type="text"
                     className="flex-1 h-10 border-solid border-2 rounded-l-2xl"
                     placeholder="Name..."></input>
+                <input value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    type="text"
+                    className="flex-1 h-10 border-solid border-2"
+                    placeholder="Category..."></input>
                 <input value={cost}
                     onChange={(e) => setCost(e.target.value)}
                     type="number"

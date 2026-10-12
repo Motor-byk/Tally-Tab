@@ -13,6 +13,7 @@ export default function WeeklyExpenses({expenses = [], startingBalance = 0, onDe
                                 <span className="text-red-700">-{toStringCents(expense.amount)}</span>
                                 <span className="flex gap-2">
                                     {expense.itemName}
+                                    {expense.category && <span className="text-gray-500 text-sm">{expense.category}</span>}
                                     <button onClick={() => onDelete(expense._id)}
                                         aria-label={`Delete ${expense.itemName}`}
                                         className="text-gray-500 hover:text-red-700">×</button>

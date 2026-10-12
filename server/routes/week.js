@@ -23,12 +23,15 @@ router.get("/current", async (req, res) => {
 
 router.post("/current/expenses", async (req, res) => {
     try {
-        const { itemName, amount } = req.body ?? {};
+        const { itemName, amount, category } = req.body ?? {};
         if (typeof itemName !== "string" || itemName.trim() === "") {
             return res.status(400).json({ message: "Item name is required" });
         }
         if (!Number.isInteger(amount) || amount <= 0) {
             return res.status(400).json({ message: "Amount must be a positive number of cents" });
+        }
+        if (category !== undefined && typeof category !== "string") {
+            return res.status(400).json({ message: "Category must be text" });
         }
 
         const week = await getOrCreateCurrentWeek(req.userId);
@@ -39,7 +42,7 @@ router.post("/current/expenses", async (req, res) => {
         const updated = await Week.findByIdAndUpdate(
             week._id,
             {
-                $push: { expenses: { itemName: itemName.trim(), amount } },
+                $push: { expenses: { itemName: itemName.trim(), category: (category ?? "").trim(), amount } },
                 $inc: { totalSpend: amount },
             },
             { returnDocument: "after", runValidators: true }
