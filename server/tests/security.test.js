@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 import request from "supertest";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
-import { startApp, stopApp, newUser, uniqueEmail, TEST_SECRET } from "./helpers.js";
+import crypto from "crypto";
+import { startApp, stopApp, newUser, uniqueEmail, anon, TEST_SECRET } from "./helpers.js";
+import { MAX_CENTS, MAX_ITEM_NAME_LENGTH, MAX_CATEGORY_LENGTH, MAX_EXPENSES_PER_WEEK } from "../util/limits.js";
+import RevokedToken from "../model/RevokedToken.js";
 import Week from "../model/Week.js";
 import User from "../model/User.js";
 
@@ -18,6 +21,11 @@ const PROTECTED = [
     ["delete", `/api/week/${new mongoose.Types.ObjectId()}/expenses/${new mongoose.Types.ObjectId()}`],
     ["patch", "/api/settings"],
 ];
+
+// a token that passes every check except the one under test
+function sign(payload, secret = TEST_SECRET) {
+    return jwt.sign({ jti: crypto.randomUUID(), ...payload }, secret);
+}
 
 function withToken(method, path, token) {
     return request(app)[method](path).set("Cookie", `token=${token}`);
@@ -39,7 +47,7 @@ describe("authentication", () => {
 
     it("rejects tokens signed with the wrong secret", async () => {
         const { user } = await newUser(app);
-        const forged = jwt.sign({ sub: user._id }, "wrong-secret");
+        const forged = sign({ sub: user._id }, "wrong-secret");
         for (const [method, path] of PROTECTED) {
             assert.equal((await withToken(method, path, forged)).status, 401, `${method.toUpperCase()} ${path}`);
         }
@@ -48,7 +56,7 @@ describe("authentication", () => {
     it("rejects unsigned alg:none tokens", async () => {
         const { user } = await newUser(app);
         const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
-        const none = `${b64({ alg: "none", typ: "JWT" })}.${b64({ sub: user._id })}.`;
+        const none = `${b64({ alg: "none", typ: "JWT" })}.${b64({ sub: user._id, jti: crypto.randomUUID() })}.`;
         assert.equal((await withToken("get", "/api/auth/me", none)).status, 401);
     });
 
@@ -56,18 +64,18 @@ describe("authentication", () => {
         const victim = await newUser(app);
         const attacker = await newUser(app);
         const [h, , s] = attacker.token.split(".");
-        const payload = Buffer.from(JSON.stringify({ sub: victim.user._id, iat: Math.floor(Date.now() / 1000) })).toString("base64url");
+        const payload = Buffer.from(JSON.stringify({ sub: victim.user._id, jti: jwt.decode(attacker.token).jti, iat: Math.floor(Date.now() / 1000) })).toString("base64url");
         assert.equal((await withToken("get", "/api/auth/me", `${h}.${payload}.${s}`)).status, 401);
     });
 
     it("rejects expired tokens", async () => {
         const { user } = await newUser(app);
-        const expired = jwt.sign({ sub: user._id, exp: Math.floor(Date.now() / 1000) - 10 }, TEST_SECRET);
+        const expired = sign({ sub: user._id, exp: Math.floor(Date.now() / 1000) - 10 });
         assert.equal((await withToken("get", "/api/auth/me", expired)).status, 401);
     });
 
     it("rejects tokens for users that no longer exist", async () => {
-        const ghost = jwt.sign({ sub: new mongoose.Types.ObjectId().toString() }, TEST_SECRET);
+        const ghost = sign({ sub: new mongoose.Types.ObjectId().toString() });
         for (const [method, path] of PROTECTED.filter(([m]) => m !== "delete")) {
             const req = withToken(method, path, ghost);
             const res = method === "post" ? await req.send({ itemName: "x", amount: 1 })
@@ -79,7 +87,7 @@ describe("authentication", () => {
     });
 
     it("rejects tokens with a non-ObjectId subject without a 500", async () => {
-        const weird = jwt.sign({ sub: { $ne: null } }, TEST_SECRET);
+        const weird = sign({ sub: { $ne: null } });
         const res = await withToken("get", "/api/week/current", weird);
         assert.equal(res.status, 401);
     });
@@ -92,7 +100,7 @@ describe("authentication", () => {
     });
 
     it("sets the auth cookie HttpOnly and SameSite", async () => {
-        const res = await request(app).post("/api/auth/register").send({ email: uniqueEmail(), password: "password123" });
+        const res = await anon(app, "post", "/api/auth/register").send({ email: uniqueEmail(), password: "password123" });
         const cookie = res.headers["set-cookie"][0];
         assert.match(cookie, /HttpOnly/i);
         assert.match(cookie, /SameSite=(Lax|Strict)/i);
@@ -105,13 +113,41 @@ describe("authentication", () => {
         const res = await withToken("get", "/api/auth/me", token);
         assert.equal(res.status, 401, "token still works after logout");
     });
+
+    it("only revokes the session that logged out", async () => {
+        const { email, password, agent: laptop } = await newUser(app);
+        const phone = (await anon(app, "post", "/api/auth/login").send({ email, password })).headers["set-cookie"][0].match(/token=([^;]+)/)[1];
+        await laptop.post("/api/auth/logout").expect(204);
+        assert.equal((await withToken("get", "/api/auth/me", phone)).status, 200);
+    });
+
+    it("cleans up revoked tokens once they would have expired", async () => {
+        const { agent, token } = await newUser(app);
+        await agent.post("/api/auth/logout").expect(204);
+        const revoked = await RevokedToken.findById(jwt.decode(token).jti);
+        assert.equal(revoked.expiresAt.getTime(), jwt.decode(token).exp * 1000);
+        const ttl = (await RevokedToken.collection.indexes()).find(i => i.key.expiresAt);
+        assert.equal(ttl?.expireAfterSeconds, 0, "no TTL index, revoked tokens pile up forever");
+    });
+
+    it("rejects tokens without a jti, since they could never be revoked", async () => {
+        const { user } = await newUser(app);
+        const noJti = jwt.sign({ sub: user._id }, TEST_SECRET);
+        assert.equal((await withToken("get", "/api/auth/me", noJti)).status, 401);
+    });
+
+    it("rejects tokens signed with a different HMAC algorithm", async () => {
+        const { user } = await newUser(app);
+        const hs512 = jwt.sign({ sub: user._id, jti: crypto.randomUUID() }, TEST_SECRET, { algorithm: "HS512" });
+        assert.equal((await withToken("get", "/api/auth/me", hs512)).status, 401);
+    });
 });
 
 describe("credentials and accounts", () => {
     it("never returns the password hash from any endpoint", async () => {
         const { agent, email, password } = await newUser(app);
         assertNoSecrets((await agent.get("/api/auth/me")).body);
-        assertNoSecrets((await request(app).post("/api/auth/login").send({ email, password })).body);
+        assertNoSecrets((await anon(app, "post", "/api/auth/login").send({ email, password })).body);
         assertNoSecrets((await agent.get("/api/week/current")).body);
         assertNoSecrets((await agent.patch("/api/settings").send({ weeklyAllowance: 500 })).body);
         assertNoSecrets((await agent.post("/api/week/current/expenses").send({ itemName: "x", amount: 1 })).body);
@@ -127,7 +163,7 @@ describe("credentials and accounts", () => {
 
     it("ignores privileged fields on register (mass assignment)", async () => {
         const forcedId = new mongoose.Types.ObjectId().toString();
-        const res = await request(app).post("/api/auth/register").send({
+        const res = await anon(app, "post", "/api/auth/register").send({
             email: uniqueEmail(), password: "password123",
             _id: forcedId, reserveCash: 1_000_000, weeklyAllowance: 999_999, passwordHash: "x", timezone: "Bad/Zone",
         });
@@ -151,25 +187,38 @@ describe("credentials and accounts", () => {
 
     it("treats emails case- and whitespace-insensitively so accounts can't be duplicated", async () => {
         const email = uniqueEmail();
-        await request(app).post("/api/auth/register").send({ email, password: "password123" }).expect(201);
+        await anon(app, "post", "/api/auth/register").send({ email, password: "password123" }).expect(201);
         for (const variant of [email.toUpperCase(), ` ${email}`, `${email} `]) {
-            const res = await request(app).post("/api/auth/register").send({ email: variant, password: "password123" });
+            const res = await anon(app, "post", "/api/auth/register").send({ email: variant, password: "password123" });
             assert.equal(res.status, 409, `"${variant}" created a second account`);
         }
     });
 
-    it("rejects a password that only matches the first 72 bytes (bcrypt truncation)", async () => {
+    it("refuses to register passwords longer than bcrypt can hash (72 bytes)", async () => {
+        for (const password of ["a".repeat(73), "é".repeat(37)]) { // 73 and 74 bytes
+            const res = await anon(app, "post", "/api/auth/register").send({ email: uniqueEmail(), password });
+            assert.equal(res.status, 400, `${Buffer.byteLength(password)}-byte password accepted`);
+        }
+        await anon(app, "post", "/api/auth/register").send({ email: uniqueEmail(), password: "a".repeat(72) }).expect(201);
+    });
+
+    it("rejects a login that only matches the first 72 bytes (bcrypt truncation)", async () => {
         const base = "a".repeat(72);
-        const { email } = await newUser(app, base + "SECRET-PART");
-        const res = await request(app).post("/api/auth/login").send({ email, password: base + "totally-different" });
+        const { email } = await newUser(app, base);
+        const res = await anon(app, "post", "/api/auth/login").send({ email, password: base + "totally-different" });
         assert.notEqual(res.status, 200, "login succeeded with the wrong password");
+    });
+
+    it("lets users log in with a differently cased or padded email", async () => {
+        const { email, password } = await newUser(app);
+        await anon(app, "post", "/api/auth/login").send({ email: ` ${email.toUpperCase()} `, password }).expect(200);
     });
 
     it("does not reveal whether an account exists through login response timing", async () => {
         const { email } = await newUser(app);
         const time = async (e) => {
             const start = performance.now();
-            await request(app).post("/api/auth/login").send({ email: e, password: "wrong-password" });
+            await anon(app, "post", "/api/auth/login").send({ email: e, password: "wrong-password" });
             return performance.now() - start;
         };
         let existing = 0, missing = 0;
@@ -181,23 +230,62 @@ describe("credentials and accounts", () => {
         assert.ok(ratio < 3, `existing accounts take ${ratio.toFixed(1)}x longer to reject (${(existing / 5).toFixed(0)}ms vs ${(missing / 5).toFixed(0)}ms)`);
     });
 
-    it("rate-limits repeated failed logins", async () => {
-        const { email } = await newUser(app);
+    it("rate-limits failed logins on one account even when every guess comes from a new ip", async () => {
+        const { email, password } = await newUser(app);
         let limited = false;
         for (let i = 0; i < 30 && !limited; i++) {
-            const res = await request(app).post("/api/auth/login").send({ email, password: `guess-${i}` });
+            const res = await anon(app, "post", "/api/auth/login").send({ email, password: `guess-${i}` });
             limited = res.status === 429;
         }
         assert.ok(limited, "30 wrong passwords in a row were never throttled");
+        // and the right password is refused too while locked, or the limit is useless
+        assert.equal((await anon(app, "post", "/api/auth/login").send({ email, password })).status, 429);
     });
 
-    it("rate-limits mass account registration", async () => {
+    it("rate-limits failed logins from one ip spread across many accounts", async () => {
+        const ip = "203.0.113.7";
+        let limited = false;
+        for (let i = 0; i < 40 && !limited; i++) {
+            const res = await request(app).post("/api/auth/login").set("X-Forwarded-For", ip).send({ email: uniqueEmail(), password: "guess" });
+            limited = res.status === 429;
+        }
+        assert.ok(limited, "40 failed logins from one ip were never throttled");
+    });
+
+    it("doesn't count successful logins toward the limit", async () => {
+        const { email, password } = await newUser(app);
+        for (let i = 0; i < 25; i++) {
+            await anon(app, "post", "/api/auth/login").send({ email, password }).expect(200);
+        }
+    });
+
+    it("can't be bypassed by changing the case of the email", async () => {
+        const { email, password } = await newUser(app);
+        for (let i = 0; i < 10; i++) {
+            const variant = i % 2 ? email.toUpperCase() : ` ${email}`;
+            await anon(app, "post", "/api/auth/login").send({ email: variant, password: `guess-${i}` });
+        }
+        assert.equal((await anon(app, "post", "/api/auth/login").send({ email, password: "guess" })).status, 429);
+    });
+
+    it("rate-limits mass account registration from one ip", async () => {
+        const ip = "203.0.113.8";
         let limited = false;
         for (let i = 0; i < 30 && !limited; i++) {
-            const res = await request(app).post("/api/auth/register").send({ email: uniqueEmail(), password: "password123" });
+            const res = await request(app).post("/api/auth/register").set("X-Forwarded-For", ip).send({ email: uniqueEmail(), password: "password123" });
             limited = res.status === 429;
         }
         assert.ok(limited, "30 accounts were created back to back without throttling");
+    });
+
+    it("returns JSON from the rate limiter", async () => {
+        const ip = "203.0.113.9";
+        let res;
+        for (let i = 0; i < 10; i++) {
+            res = await request(app).post("/api/auth/register").set("X-Forwarded-For", ip).send({ email: uniqueEmail(), password: "password123" });
+        }
+        assert.equal(res.status, 429);
+        assert.match(res.body.message, /too many/i);
     });
 });
 
@@ -210,7 +298,7 @@ describe("NoSQL injection", () => {
             { email: { $regex: ".*" }, password: "x" },
             { email: ["a@b.com"], password: "x" },
         ]) {
-            const res = await request(app).post("/api/auth/login").send(body);
+            const res = await anon(app, "post", "/api/auth/login").send(body);
             assert.equal(res.status, 400, JSON.stringify(body));
             assert.ok(!res.headers["set-cookie"], "a cookie was issued");
         }
@@ -218,12 +306,12 @@ describe("NoSQL injection", () => {
 
     it("treats regex characters in the login email literally", async () => {
         const { password } = await newUser(app);
-        const res = await request(app).post("/api/auth/login").send({ email: ".*", password });
+        const res = await anon(app, "post", "/api/auth/login").send({ email: ".*", password });
         assert.equal(res.status, 401);
     });
 
     it("rejects operator objects in register", async () => {
-        const res = await request(app).post("/api/auth/register").send({ email: { $gt: "" }, password: "password123" });
+        const res = await anon(app, "post", "/api/auth/register").send({ email: { $gt: "" }, password: "password123" });
         assert.equal(res.status, 400);
     });
 
@@ -339,6 +427,35 @@ describe("input validation and data integrity", () => {
         }
     });
 
+    it("accepts values right at the limits", async () => {
+        const { agent } = await newUser(app);
+        await agent.post("/api/week/current/expenses")
+            .send({ itemName: "N".repeat(MAX_ITEM_NAME_LENGTH), category: "C".repeat(MAX_CATEGORY_LENGTH), amount: MAX_CENTS })
+            .expect(201);
+        await agent.patch("/api/settings").send({ weeklyAllowance: MAX_CENTS }).expect(200);
+    });
+
+    it("rejects values one past the limits", async () => {
+        const { agent } = await newUser(app);
+        const add = (body) => agent.post("/api/week/current/expenses").send({ itemName: "x", amount: 1, ...body });
+        assert.equal((await add({ itemName: "N".repeat(MAX_ITEM_NAME_LENGTH + 1) })).status, 400);
+        assert.equal((await add({ category: "C".repeat(MAX_CATEGORY_LENGTH + 1) })).status, 400);
+        assert.equal((await add({ amount: MAX_CENTS + 1 })).status, 400);
+        assert.equal((await agent.patch("/api/settings").send({ weeklyAllowance: MAX_CENTS + 1 })).status, 400);
+    });
+
+    it("caps the number of expenses in a week", async () => {
+        const { agent } = await newUser(app);
+        const week = (await agent.get("/api/week/current")).body.week;
+        const expenses = Array.from({ length: MAX_EXPENSES_PER_WEEK }, () => ({ itemName: "x", amount: 1 }));
+        await Week.updateOne({ _id: week._id }, { expenses, totalSpend: MAX_EXPENSES_PER_WEEK });
+        const res = await agent.post("/api/week/current/expenses").send({ itemName: "one too many", amount: 1 });
+        assert.equal(res.status, 409);
+        const after = await Week.findById(week._id);
+        assert.equal(after.expenses.length, MAX_EXPENSES_PER_WEEK);
+        assert.equal(after.totalSpend, MAX_EXPENSES_PER_WEEK);
+    });
+
     it("caps item name and category length", async () => {
         const { agent } = await newUser(app);
         const huge = "A".repeat(50_000);
@@ -347,7 +464,7 @@ describe("input validation and data integrity", () => {
     });
 
     it("caps email length", async () => {
-        const res = await request(app).post("/api/auth/register").send({ email: "a".repeat(50_000) + "@x.com", password: "password123" });
+        const res = await anon(app, "post", "/api/auth/register").send({ email: "a".repeat(50_000) + "@x.com", password: "password123" });
         assert.equal(res.status, 400);
     });
 
@@ -358,8 +475,9 @@ describe("input validation and data integrity", () => {
     });
 
     it("handles malformed JSON with a 4xx and no stack trace", async () => {
-        const res = await request(app).post("/api/auth/login").set("Content-Type", "application/json").send('{"email":');
-        assert.ok(res.status >= 400 && res.status < 500, `got ${res.status}`);
+        const res = await anon(app, "post", "/api/auth/login").set("Content-Type", "application/json").send('{"email":');
+        assert.equal(res.status, 400);
+        assert.match(res.headers["content-type"], /json/);
         assert.ok(!/at .+\.js:\d+/.test(res.text), "stack trace leaked to the client");
         assert.ok(!res.text.includes("node_modules"), "server file paths leaked to the client");
     });
@@ -446,6 +564,27 @@ describe("HTTP hardening", () => {
         const xfo = res.headers["x-frame-options"];
         const csp = res.headers["content-security-policy"] ?? "";
         assert.ok(/deny|sameorigin/i.test(xfo ?? "") || /frame-ancestors/.test(csp), "page can be framed by any site");
+    });
+
+    it("sends a Content-Security-Policy that blocks inline scripts", async () => {
+        const csp = (await request(app).get("/")).headers["content-security-policy"] ?? "";
+        const scriptSrc = csp.match(/script-src ([^;]+)/)?.[1] ?? csp.match(/default-src ([^;]+)/)?.[1] ?? "";
+        assert.ok(scriptSrc, "no CSP script policy");
+        assert.ok(!scriptSrc.includes("'unsafe-inline'") && !scriptSrc.includes("*"), `script-src is ${scriptSrc}`);
+        assert.match(csp, /object-src 'none'/);
+    });
+
+    it("ignores a spoofed X-Forwarded-For chain when picking the client ip", async () => {
+        // an attacker prepends fake ips; only the one the proxy appended should count
+        const ip = "203.0.113.10";
+        let limited = false;
+        for (let i = 0; i < 30 && !limited; i++) {
+            const res = await request(app).post("/api/auth/register")
+                .set("X-Forwarded-For", `1.2.3.${i}, ${ip}`)
+                .send({ email: uniqueEmail(), password: "password123" });
+            limited = res.status === 429;
+        }
+        assert.ok(limited, "rotating the spoofed part of X-Forwarded-For bypassed the limit");
     });
 
     it("returns JSON 404s for unknown API routes instead of the app shell", async () => {

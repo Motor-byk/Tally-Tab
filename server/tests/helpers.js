@@ -22,13 +22,24 @@ export async function stopApp() {
 }
 
 let counter = 0;
+
+// each simulated visitor gets its own ip so the rate limits don't bleed between tests
+export function randomIp() {
+    return `10.${counter % 256}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}`;
+}
+
+// an anonymous request from a fresh ip
+export function anon(app, method, path) {
+    return request(app)[method](path).set("X-Forwarded-For", randomIp());
+}
+
 export function uniqueEmail() {
     return `user${Date.now()}_${counter++}@test.com`;
 }
 
 // registers a new user and returns an agent that carries their auth cookie
 export async function newUser(app, password = "correct-horse-battery") {
-    const agent = request.agent(app);
+    const agent = request.agent(app).set("X-Forwarded-For", randomIp());
     const email = uniqueEmail();
     const res = await agent.post("/api/auth/register").send({ email, password });
     if (res.status !== 201) {

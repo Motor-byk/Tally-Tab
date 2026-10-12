@@ -45,6 +45,7 @@ export default function AuthForm({onAuth}) {
                             onChange={(e) => setEmail(e.target.value)}
                             type="email"
                             required
+                            maxLength={254}
                             className="receipt-input normal-case"></input>
                     </label>
                     <label className="flex flex-col">
@@ -54,6 +55,7 @@ export default function AuthForm({onAuth}) {
                             type="password"
                             required
                             minLength={mode === "register" ? 8 : undefined}
+                            maxLength={72}
                             className="receipt-input"></input>
                     </label>
                     {error && <p className="text-ink-red text-base">{error}</p>}

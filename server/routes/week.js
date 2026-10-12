@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import Week from "../model/Week.js";
 import User from "../model/User.js";
 import { getOrCreateCurrentWeek } from "../util/week.js";
+import { MAX_ITEM_NAME_LENGTH, MAX_CATEGORY_LENGTH, MAX_CENTS, MAX_EXPENSES_PER_WEEK } from "../util/limits.js";
 
 const router = express.Router();
 
@@ -27,11 +28,17 @@ router.post("/current/expenses", async (req, res) => {
         if (typeof itemName !== "string" || itemName.trim() === "") {
             return res.status(400).json({ message: "Item name is required" });
         }
-        if (!Number.isInteger(amount) || amount <= 0) {
-            return res.status(400).json({ message: "Amount must be a positive number of cents" });
+        if (itemName.trim().length > MAX_ITEM_NAME_LENGTH) {
+            return res.status(400).json({ message: `Item name must be ${MAX_ITEM_NAME_LENGTH} characters or less` });
+        }
+        if (!Number.isInteger(amount) || amount <= 0 || amount > MAX_CENTS) {
+            return res.status(400).json({ message: "Amount must be between $0.01 and $1,000,000" });
         }
         if (category !== undefined && typeof category !== "string") {
             return res.status(400).json({ message: "Category must be text" });
+        }
+        if (category !== undefined && category.trim().length > MAX_CATEGORY_LENGTH) {
+            return res.status(400).json({ message: `Category must be ${MAX_CATEGORY_LENGTH} characters or less` });
         }
 
         const week = await getOrCreateCurrentWeek(req.userId);
@@ -39,14 +46,18 @@ router.post("/current/expenses", async (req, res) => {
             return res.status(401).json({ message: "Not authenticated" });
         }
 
-        const updated = await Week.findByIdAndUpdate(
-            week._id,
+        // the size check is part of the filter so concurrent adds can't push past the cap
+        const updated = await Week.findOneAndUpdate(
+            { _id: week._id, [`expenses.${MAX_EXPENSES_PER_WEEK - 1}`]: { $exists: false } },
             {
                 $push: { expenses: { itemName: itemName.trim(), category: (category ?? "").trim(), amount } },
                 $inc: { totalSpend: amount },
             },
             { returnDocument: "after", runValidators: true }
         );
+        if (!updated) {
+            return res.status(409).json({ message: `A week can have at most ${MAX_EXPENSES_PER_WEEK} expenses` });
+        }
         res.status(201).json(updated);
     } catch (err) {
         console.error(err);

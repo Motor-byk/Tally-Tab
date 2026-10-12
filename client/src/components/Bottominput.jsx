@@ -35,6 +35,7 @@ export default function Bottominput({onAdd}) {
             <input value={name}
                 onChange={(e) => setName(e.target.value)}
                 type="text"
+                maxLength={100}
                 aria-label="Name"
                 className="receipt-input"
                 placeholder="Name..."></input>
@@ -42,6 +43,7 @@ export default function Bottominput({onAdd}) {
                 <input value={category}
                     onChange={(e) => setCategory(e.target.value)}
                     type="text"
+                    maxLength={50}
                     aria-label="Category"
                     className="receipt-input"
                     placeholder="Category..."></input>
@@ -49,6 +51,7 @@ export default function Bottominput({onAdd}) {
                     onChange={(e) => setCost(e.target.value)}
                     type="number"
                     min="0.01"
+                    max="1000000"
                     step="0.01"
                     aria-label="Cost"
                     className="receipt-input w-28! text-right"

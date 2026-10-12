@@ -38,6 +38,7 @@ export default function Settings({user, onSave, onClose}) {
                             onChange={(e) => setBalance(e.target.value)}
                             type="number"
                             min="0"
+                            max="1000000"
                             step="0.01"
                             required
                             className="receipt-input"
