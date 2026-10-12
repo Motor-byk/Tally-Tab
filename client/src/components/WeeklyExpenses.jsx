@@ -1,6 +1,6 @@
 import { toStringCents, formatSigned } from "../util/expenseCalc";
 
-export default function WeeklyExpenses({expenses = [], startingBalance = 0, currentBalance, reserve = 0, projectedReserve, onDelete}){
+export default function WeeklyExpenses({expenses = [], startingBalance = 0, currentBalance, reserve = 0, projectedReserve, deletingId, onDelete}){
     const totalSpent = expenses.reduce((total, cur) => total + cur.amount, 0);
 
     return (
@@ -17,8 +17,9 @@ export default function WeeklyExpenses({expenses = [], startingBalance = 0, curr
                                     <span className="flex gap-2 shrink-0">
                                         -{toStringCents(expense.amount)}
                                         <button onClick={() => onDelete(expense._id)}
+                                            disabled={deletingId === expense._id}
                                             aria-label={`Delete ${expense.itemName}`}
-                                            className="text-sm text-ink-faint hover:text-ink-red">Void</button>
+                                            className="text-sm text-ink-faint hover:text-ink-red">{deletingId === expense._id ? "..." : "Void"}</button>
                                     </span>
                                 </div>
                                 {expense.category && <div className="pl-4 text-base text-ink-faint">{expense.category}</div>}
@@ -31,9 +32,9 @@ export default function WeeklyExpenses({expenses = [], startingBalance = 0, curr
                 <span>{toStringCents(totalSpent)}</span>
             </div>
             <hr className="receipt-rule-double" />
-            <div className={`flex justify-between text-2xl ${currentBalance < 0 ? "text-ink-red" : ""}`}>
+            <div className={`flex justify-between text-2xl font-bold ${currentBalance < 0 ? "text-ink-red" : ""}`}>
                 <span>Balance</span>
-                <span>{formatSigned(currentBalance)}</span>
+                <span className="underline decoration-2 underline-offset-4">{formatSigned(currentBalance)}</span>
             </div>
             <div className="flex justify-between">
                 <span>Reserve</span>

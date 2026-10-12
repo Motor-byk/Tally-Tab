@@ -17,12 +17,23 @@ async function requestWeek(url, options) {
     return data;
 }
 
+function StatusScreen({message, error}) {
+    return (
+        <div className="p-4">
+            <Receipt className="text-center">
+                <p className={error ? "text-ink-red" : "animate-pulse"}>{error || message}</p>
+            </Receipt>
+        </div>
+    );
+}
+
 function App() {
     const [user, setUser] = useState(null);
     const [authChecked, setAuthChecked] = useState(false);
     const [week, setWeek] = useState(null);
     const [weekError, setWeekError] = useState("");
     const [settingsOpen, setSettingsOpen] = useState(false);
+    const [deletingId, setDeletingId] = useState(null);
 
     useEffect(() => {
         fetch("/api/auth/me")
@@ -77,16 +88,19 @@ function App() {
     }
 
     async function handleDeleteExpense(expenseId) {
+        setDeletingId(expenseId);
         try {
             const data = await requestWeek(`/api/week/${week._id}/expenses/${expenseId}`, {method: "DELETE"});
             setWeek(data);
         } catch (error) {
             setWeekError(error.message);
+        } finally {
+            setDeletingId(null);
         }
     }
 
     if (!authChecked) {
-        return null;
+        return <StatusScreen message="Printing..." />;
     }
 
     if (!user) {
@@ -94,13 +108,7 @@ function App() {
     }
 
     if (!week) {
-        return (
-            <div className="p-4">
-                <Receipt className="text-center">
-                    <p className={weekError ? "text-ink-red" : undefined}>{weekError || "Printing..."}</p>
-                </Receipt>
-            </div>
-        );
+        return <StatusScreen message="Printing..." error={weekError} />;
     }
 
     const { expenses, startingBalance, totalSpend } = week;
@@ -117,6 +125,7 @@ function App() {
                     currentBalance={currentBalance}
                     reserve={user.reserveCash}
                     projectedReserve={currentBalance < 0 ? user.reserveCash + currentBalance : undefined}
+                    deletingId={deletingId}
                     onDelete={handleDeleteExpense}/>
                 <hr className="receipt-rule" />
                 <Bottominput onAdd={handleAddExpense}/>

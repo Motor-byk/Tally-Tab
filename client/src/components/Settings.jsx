@@ -49,7 +49,7 @@ export default function Settings({user, onSave, onClose}) {
                     <div className="flex justify-between">
                         <button type="submit"
                             disabled={submitting}
-                            className="receipt-btn">Save</button>
+                            className="receipt-btn">{submitting ? "Saving..." : "Save"}</button>
                         <button type="button"
                             onClick={onClose}
                             className="receipt-btn">Cancel</button>

@@ -7,10 +7,12 @@ export default function AuthForm({onAuth}) {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [error, setError] = useState("");
+    const [submitting, setSubmitting] = useState(false);
 
     async function handleSubmit(e){
         e.preventDefault();
         setError("");
+        setSubmitting(true);
         try {
             const response = await fetch(`/api/auth/${mode}`, {
                 method: "POST",
@@ -25,6 +27,8 @@ export default function AuthForm({onAuth}) {
             onAuth(data);
         } catch {
             setError("Could not reach the server");
+        } finally {
+            setSubmitting(false);
         }
     }
 
@@ -53,8 +57,10 @@ export default function AuthForm({onAuth}) {
                             className="receipt-input"></input>
                     </label>
                     {error && <p className="text-ink-red text-base">{error}</p>}
-                    <button type="submit" className="receipt-btn self-center mt-2">
-                        {mode === "login" ? "Log in" : "Sign up"}
+                    <button type="submit" disabled={submitting} className="receipt-btn self-center mt-2">
+                        {submitting
+                            ? (mode === "login" ? "Logging in..." : "Signing up...")
+                            : (mode === "login" ? "Log in" : "Sign up")}
                     </button>
                     <button type="button"
                         onClick={() => setMode(mode === "login" ? "register" : "login")}

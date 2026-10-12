@@ -57,7 +57,7 @@ export default function Bottominput({onAdd}) {
             {error && <p className="text-ink-red text-base">{error}</p>}
             <button type="submit"
                 disabled={submitting}
-                className="receipt-btn self-center mt-1">Add</button>
+                className="receipt-btn self-center mt-1">{submitting ? "Adding..." : "Add"}</button>
         </form>
     );
 }
