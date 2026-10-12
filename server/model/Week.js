@@ -14,7 +14,6 @@ const weekSchema = new Schema({
     weekStart: {type: Date, required: true},
     weekKey: {type: String, required: true}, // "YYYY-MM-DD" of weekStart
     startingBalance: {type: Number, required: true},
-    carriedIn: {type: Number, default: 0},
     totalSpend: {type: Number, default: 0},
     expenses: [expenseSchema],
     status: {type: String, enum: ["open", "closed"], default: "open"},
@@ -23,10 +22,6 @@ const weekSchema = new Schema({
 }, {timestamps: true});
 
 weekSchema.index({ userId: 1, weekKey: 1 }, { unique: true });
-
-weekSchema.virtual('remaining').get(function () {
-    return this.startingBalance + this.carriedIn - this.totalSpend;
-});
 
 const Week = mongoose.model("Week", weekSchema)
 export default Week;

@@ -1,12 +1,18 @@
 import mongoose from "mongoose";
 
-export default async function connectDB(){
-    try {
-        await mongoose.connect(process.env.ATLAS_URI, {
-            dbName: "ExpenseTracker"
+// reuse the connection across serverless invocations
+let cached;
+
+export default function connectDB(){
+    if (!cached) {
+        cached = mongoose.connect(process.env.ATLAS_URI, {
+            dbName: "ExpenseTracker",
+            maxPoolSize: 5,
+            serverSelectionTimeoutMS: 5000,
+        }).catch((err) => {
+            cached = undefined;
+            throw err;
         });
-    } catch(err){
-        console.error(err)
-        process.exit(1);
     }
+    return cached;
 }

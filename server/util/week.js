@@ -36,7 +36,7 @@ export async function closeFinishedWeeks(userId, currentKey) {
                 $set: {
                     status: "closed",
                     closedAt: "$$NOW",
-                    rollovertoReserve: { $subtract: [{ $add: ["$startingBalance", "$carriedIn"] }, "$totalSpend"] },
+                    rollovertoReserve: { $subtract: ["$startingBalance", "$totalSpend"] },
                 },
             }],
             { returnDocument: "after", updatePipeline: true }

@@ -103,8 +103,8 @@ function App() {
         );
     }
 
-    const { expenses, startingBalance } = week;
-    const currentBalance = startingBalance - expenses.reduce((totalExpense, expense) => totalExpense + expense.amount, 0)
+    const { expenses, startingBalance, totalSpend } = week;
+    const currentBalance = startingBalance - totalSpend
 
     return (
         <div className="min-h-screen px-4 py-8">
