@@ -22,7 +22,7 @@ export default function WeeklyExpenses({expenses = [], startingBalance = 0, curr
                                             className="text-sm text-ink-faint hover:text-ink-red">{deletingId === expense._id ? "..." : "Void"}</button>
                                     </span>
                                 </div>
-                                {expense.category && <div className="pl-4 text-base text-ink-faint">{expense.category}</div>}
+                                {expense.category && <div className="pl-4 text-base text-ink-faint break-all">{expense.category}</div>}
                             </li>
                 })}
             </ul>
