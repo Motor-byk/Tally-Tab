@@ -34,14 +34,19 @@ function App() {
             .finally(() => setAuthChecked(true));
     },[]);
 
+    // keyed on the id so refreshing the user from the response doesn't refetch the week
+    const userId = user?._id;
     useEffect(() => {
-        if (!user) {
+        if (!userId) {
             return;
         }
         requestWeek("/api/week/current")
-            .then((data) => setWeek(data))
+            .then((data) => {
+                setWeek(data.week);
+                setUser(data.user);
+            })
             .catch((error) => setWeekError(error.message));
-    }, [user]);
+    }, [userId]);
 
     async function handleLogout() {
         await fetch("/api/auth/logout", {method: "POST"});
@@ -102,7 +107,9 @@ function App() {
 
     return (
         <div className="flex flex-col min-h-screen">
-            <Topbar reserve={1000} weekStart={week.weekStart} onLogout={handleLogout} onOpenSettings={() => setSettingsOpen(true)} />
+            <Topbar reserve={user.reserveCash}
+                projectedReserve={currentBalance < 0 ? user.reserveCash + currentBalance : undefined}
+                weekStart={week.weekStart} onLogout={handleLogout} onOpenSettings={() => setSettingsOpen(true)} />
             <main className="grow m-4">
                 <h2 className="text-2xl font-bold">Weekly Balance</h2>
                 {

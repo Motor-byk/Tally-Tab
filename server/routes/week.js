@@ -1,6 +1,7 @@
 import express from "express";
 import mongoose from "mongoose";
 import Week from "../model/Week.js";
+import User from "../model/User.js";
 import { getOrCreateCurrentWeek } from "../util/week.js";
 
 const router = express.Router();
@@ -11,7 +12,9 @@ router.get("/current", async (req, res) => {
         if (!week) {
             return res.status(401).json({ message: "Not authenticated" });
         }
-        res.status(200).json(week);
+        // re-fetch after the week lookup so the reserve includes any weeks it just closed
+        const user = await User.findById(req.userId).select("-passwordHash");
+        res.status(200).json({ week, user });
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: "Server error" });
@@ -72,6 +75,16 @@ router.delete("/:weekId/expenses/:expenseId", async (req, res) => {
         );
         if (!updated) {
             return res.status(404).json({ message: "Expense not found" });
+        }
+        if (updated.status === "closed") {
+            // the week's leftover already went to the reserve, so give the refunded amount back too
+            await User.updateOne({ _id: req.userId }, { $inc: { reserveCash: expense.amount } });
+            const adjusted = await Week.findByIdAndUpdate(
+                weekId,
+                { $inc: { rollovertoReserve: expense.amount } },
+                { returnDocument: "after" }
+            );
+            return res.status(200).json(adjusted);
         }
         res.status(200).json(updated);
     } catch (err) {

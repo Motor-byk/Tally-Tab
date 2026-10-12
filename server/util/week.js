@@ -25,6 +25,28 @@ export function weekStartFromKey(key) {
     return new Date(Date.UTC(y, m - 1, d));
 }
 
+// closes every open week before the current one and adds its leftover (or overspend) to the reserve
+export async function closeFinishedWeeks(userId, currentKey) {
+    const finished = await Week.find({ userId, status: "open", weekKey: { $lt: currentKey } }).select("_id");
+    for (const { _id } of finished) {
+        // match on status so a concurrent request can't credit the same week twice
+        const closed = await Week.findOneAndUpdate(
+            { _id, status: "open" },
+            [{
+                $set: {
+                    status: "closed",
+                    closedAt: "$$NOW",
+                    rollovertoReserve: { $subtract: [{ $add: ["$startingBalance", "$carriedIn"] }, "$totalSpend"] },
+                },
+            }],
+            { returnDocument: "after", updatePipeline: true }
+        );
+        if (closed) {
+            await User.updateOne({ _id: userId }, { $inc: { reserveCash: closed.rollovertoReserve } });
+        }
+    }
+}
+
 export async function getOrCreateCurrentWeek(userId) {
     const user = await User.findById(userId);
     if (!user) {
@@ -32,6 +54,7 @@ export async function getOrCreateCurrentWeek(userId) {
     }
 
     const weekKey = currentWeekKey(user.timezone, user.weekStartsOn);
+    await closeFinishedWeeks(userId, weekKey);
     const filter = { userId, weekKey };
     try {
         return await Week.findOneAndUpdate(
