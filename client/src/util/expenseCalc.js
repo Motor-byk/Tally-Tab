@@ -6,3 +6,8 @@ export function toStringCents(price) {
 }
 
 
+
+// toStringCents only formats the magnitude, this adds the sign back for values that can go negative
+export function formatSigned(cents) {
+    return cents < 0 ? `-${toStringCents(-cents)}` : toStringCents(cents);
+}

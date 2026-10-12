@@ -1,4 +1,5 @@
 import { useState } from "react";
+import Receipt from "./Receipt";
 
 export default function AuthForm({onAuth}) {
 
@@ -28,32 +29,43 @@ export default function AuthForm({onAuth}) {
     }
 
     return(
-        <div className="flex flex-col items-center justify-center min-h-screen">
-            <form className="flex flex-col gap-3 w-72" onSubmit={handleSubmit}>
-                <h2 className="text-2xl font-bold">{mode === "login" ? "Log in" : "Create account"}</h2>
-                <input value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    type="email"
-                    required
-                    className="h-10 px-2 border-solid border-2 rounded-2xl"
-                    placeholder="Email..."></input>
-                <input value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    type="password"
-                    required
-                    minLength={mode === "register" ? 8 : undefined}
-                    className="h-10 px-2 border-solid border-2 rounded-2xl"
-                    placeholder="Password..."></input>
-                {error && <p className="text-red-700 text-sm">{error}</p>}
-                <button type="submit" className="p-2 border-solid border-3 rounded-4xl">
-                    {mode === "login" ? "Log in" : "Sign up"}
-                </button>
-                <button type="button"
-                    onClick={() => setMode(mode === "login" ? "register" : "login")}
-                    className="text-sm text-blue-950 underline italic">
-                    {mode === "login" ? "Need an account? Sign up" : "Have an account? Log in"}
-                </button>
-            </form>
+        <div className="flex items-center justify-center min-h-screen p-4">
+            <Receipt>
+                <form className="flex flex-col gap-3" onSubmit={handleSubmit}>
+                    <h1 className="text-4xl text-center tracking-widest">** Tally Tab **</h1>
+                    <hr className="receipt-rule" />
+                    <h2 className="text-2xl text-center">{mode === "login" ? "Log in" : "Create account"}</h2>
+                    <label className="flex flex-col">
+                        <span>Email</span>
+                        <input value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            type="email"
+                            required
+                            className="receipt-input normal-case"></input>
+                    </label>
+                    <label className="flex flex-col">
+                        <span>Password</span>
+                        <input value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            type="password"
+                            required
+                            minLength={mode === "register" ? 8 : undefined}
+                            className="receipt-input"></input>
+                    </label>
+                    {error && <p className="text-ink-red text-base">{error}</p>}
+                    <button type="submit" className="receipt-btn self-center mt-2">
+                        {mode === "login" ? "Log in" : "Sign up"}
+                    </button>
+                    <button type="button"
+                        onClick={() => setMode(mode === "login" ? "register" : "login")}
+                        className="text-base text-ink-faint underline hover:text-ink">
+                        {mode === "login" ? "Need an account? Sign up" : "Have an account? Log in"}
+                    </button>
+                </form>
+                <hr className="receipt-rule" />
+                <div className="barcode" />
+                <p className="text-center">** Thank you **</p>
+            </Receipt>
         </div>
     );
 }

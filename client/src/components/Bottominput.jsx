@@ -30,30 +30,34 @@ export default function Bottominput({onAdd}) {
     }
 
     return(
-        <div className="mb-2 w-full fixed bottom-0 left-0">
-            {error && <p className="mx-2 text-red-700 text-sm">{error}</p>}
-            <form className="flex items-center w-full" onSubmit={handleSubmit}>
-                <button type="submit"
-                    disabled={submitting}
-                    className="p-4 mx-2 border-solid border-3 rounded-4xl disabled:opacity-50">Add</button>
-                <input value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    type="text"
-                    className="flex-1 h-10 border-solid border-2 rounded-l-2xl"
-                    placeholder="Name..."></input>
+        <form className="flex flex-col gap-2" onSubmit={handleSubmit}>
+            <p>New Item</p>
+            <input value={name}
+                onChange={(e) => setName(e.target.value)}
+                type="text"
+                aria-label="Name"
+                className="receipt-input"
+                placeholder="Name..."></input>
+            <div className="flex gap-4">
                 <input value={category}
                     onChange={(e) => setCategory(e.target.value)}
                     type="text"
-                    className="flex-1 h-10 border-solid border-2"
+                    aria-label="Category"
+                    className="receipt-input"
                     placeholder="Category..."></input>
                 <input value={cost}
                     onChange={(e) => setCost(e.target.value)}
                     type="number"
                     min="0.01"
                     step="0.01"
-                    className="flex-1 h-10 mr-2 border-solid border-2 rounded-r-2xl"
-                    placeholder="Cost..."></input>
-            </form>
-        </div>
+                    aria-label="Cost"
+                    className="receipt-input w-28! text-right"
+                    placeholder="$0.00"></input>
+            </div>
+            {error && <p className="text-ink-red text-base">{error}</p>}
+            <button type="submit"
+                disabled={submitting}
+                className="receipt-btn self-center mt-1">Add</button>
+        </form>
     );
 }

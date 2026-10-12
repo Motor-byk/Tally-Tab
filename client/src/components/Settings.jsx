@@ -1,4 +1,5 @@
 import { useState } from "react";
+import Receipt from "./Receipt";
 
 export default function Settings({user, onSave, onClose}) {
 
@@ -26,33 +27,35 @@ export default function Settings({user, onSave, onClose}) {
     }
 
     return(
-        <div className="fixed inset-0 flex items-center justify-center bg-black/40" onClick={onClose}>
-            <form className="flex flex-col gap-3 w-72 p-4 bg-white rounded-2xl"
-                onClick={(e) => e.stopPropagation()}
-                onSubmit={handleSubmit}>
-                <h2 className="text-2xl font-bold">Settings</h2>
-                <label className="flex flex-col gap-1">
-                    <span>Weekly starting balance</span>
-                    <input value={balance}
-                        onChange={(e) => setBalance(e.target.value)}
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        required
-                        className="h-10 px-2 border-solid border-2 rounded-2xl"
-                        placeholder="0.00"></input>
-                </label>
-                <p className="text-sm text-gray-600 italic">Applies to this week and future weeks.</p>
-                {error && <p className="text-red-700 text-sm">{error}</p>}
-                <div className="flex gap-2">
-                    <button type="submit"
-                        disabled={submitting}
-                        className="flex-1 p-2 border-solid border-3 rounded-4xl disabled:opacity-50">Save</button>
-                    <button type="button"
-                        onClick={onClose}
-                        className="flex-1 p-2 border-solid border-2 rounded-4xl">Cancel</button>
-                </div>
-            </form>
+        <div className="fixed inset-0 flex items-center justify-center p-4 bg-black/60" onClick={onClose}>
+            <Receipt onClick={(e) => e.stopPropagation()}>
+                <form className="flex flex-col gap-3" onSubmit={handleSubmit}>
+                    <h2 className="text-3xl text-center tracking-widest">** Settings **</h2>
+                    <hr className="receipt-rule" />
+                    <label className="flex flex-col">
+                        <span>Weekly starting bal</span>
+                        <input value={balance}
+                            onChange={(e) => setBalance(e.target.value)}
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            required
+                            className="receipt-input"
+                            placeholder="0.00"></input>
+                    </label>
+                    <p className="text-base text-ink-faint">Applies to this week and future weeks.</p>
+                    {error && <p className="text-ink-red text-base">{error}</p>}
+                    <hr className="receipt-rule" />
+                    <div className="flex justify-between">
+                        <button type="submit"
+                            disabled={submitting}
+                            className="receipt-btn">Save</button>
+                        <button type="button"
+                            onClick={onClose}
+                            className="receipt-btn">Cancel</button>
+                    </div>
+                </form>
+            </Receipt>
         </div>
     );
 }

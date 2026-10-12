@@ -1,31 +1,49 @@
-import { toStringCents } from "../util/expenseCalc";
+import { toStringCents, formatSigned } from "../util/expenseCalc";
 
-export default function WeeklyExpenses({expenses = [], startingBalance = 0, onDelete}){
-        return (
-        <div className="overflow-y-auto overflow-x-auto max-h-80 max-w-md">
-            <ul className="w-50">
+export default function WeeklyExpenses({expenses = [], startingBalance = 0, currentBalance, reserve = 0, projectedReserve, onDelete}){
+    const totalSpent = expenses.reduce((total, cur) => total + cur.amount, 0);
+
+    return (
+        <section>
+            <ul>
                 <li className="flex justify-between">
-                    <span className="italic text-green-700">{toStringCents(startingBalance)}</span>
-                    <span className="italic">Starting Balance</span>
+                    <span>Starting Bal</span>
+                    <span>{toStringCents(startingBalance)}</span>
                 </li>
                 {expenses.map((expense) => {
-                    return <li className="flex justify-between" key={expense._id}>
-                                <span className="text-red-700">-{toStringCents(expense.amount)}</span>
-                                <span className="flex gap-2">
-                                    {expense.itemName}
-                                    {expense.category && <span className="text-gray-500 text-sm">{expense.category}</span>}
-                                    <button onClick={() => onDelete(expense._id)}
-                                        aria-label={`Delete ${expense.itemName}`}
-                                        className="text-gray-500 hover:text-red-700">×</button>
-                                </span>
+                    return <li key={expense._id}>
+                                <div className="flex justify-between gap-2">
+                                    <span className="break-all">{expense.itemName}</span>
+                                    <span className="flex gap-2 shrink-0">
+                                        -{toStringCents(expense.amount)}
+                                        <button onClick={() => onDelete(expense._id)}
+                                            aria-label={`Delete ${expense.itemName}`}
+                                            className="text-sm text-ink-faint hover:text-ink-red">Void</button>
+                                    </span>
+                                </div>
+                                {expense.category && <div className="pl-4 text-base text-ink-faint">{expense.category}</div>}
                             </li>
                 })}
-                <hr className="border-t border-gray-300 my-2" />
-                <li className="flex justify-between">
-                    <span className="underline font-semibold text-red-800">{toStringCents(expenses.reduce((total, cur) => total + cur.amount, 0))}</span>
-                    <span>Total Spent</span>
-                </li>
             </ul>
-        </div>
+            <hr className="receipt-rule" />
+            <div className="flex justify-between">
+                <span>Total Spent</span>
+                <span>{toStringCents(totalSpent)}</span>
+            </div>
+            <hr className="receipt-rule-double" />
+            <div className={`flex justify-between text-2xl ${currentBalance < 0 ? "text-ink-red" : ""}`}>
+                <span>Balance</span>
+                <span>{formatSigned(currentBalance)}</span>
+            </div>
+            <div className="flex justify-between">
+                <span>Reserve</span>
+                <span className={reserve < 0 ? "text-ink-red" : undefined}>{formatSigned(reserve)}</span>
+            </div>
+            {projectedReserve !== undefined &&
+                <div className="flex justify-between pl-4 text-base text-ink-faint">
+                    <span>After this week</span>
+                    <span className={projectedReserve < 0 ? "text-ink-red" : undefined}>{formatSigned(projectedReserve)}</span>
+                </div>}
+        </section>
     );
 }

@@ -1,1 +1,127 @@
 @import "tailwindcss";
+
+@theme {
+    --font-receipt: "VT323", ui-monospace, monospace;
+    --color-paper: #fbfaf5;
+    --color-ink: #45464a;
+    --color-ink-faint: #8a8b8f;
+    --color-ink-red: #b24a4a;
+    --color-counter: #1f2124;
+}
+
+body {
+    background-color: var(--color-counter);
+    color: var(--color-ink);
+    font-family: var(--font-receipt);
+}
+
+/* paper strip with torn zigzag edges top and bottom */
+.receipt {
+    --tooth: 10px;
+    position: relative;
+    margin: var(--tooth) auto;
+    padding: 1.25rem 1.25rem 1.5rem;
+    background-color: var(--color-paper);
+    background-image: radial-gradient(rgb(0 0 0 / 0.03) 1px, transparent 1px);
+    background-size: 3px 3px;
+    color: var(--color-ink);
+    font-family: var(--font-receipt);
+    font-size: 1.25rem;
+    line-height: 1.2;
+    text-transform: uppercase;
+    /* drop-shadow (not box-shadow) so the shadow follows the zigzag edges */
+    filter: drop-shadow(0 6px 14px rgb(0 0 0 / 0.5));
+}
+
+.receipt::before,
+.receipt::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: var(--tooth);
+    background-size: calc(var(--tooth) * 2) 100%;
+    background-repeat: repeat-x;
+}
+
+.receipt::before {
+    bottom: 100%;
+    background-image: conic-gradient(from -45deg at bottom, transparent 90deg, var(--color-paper) 0);
+}
+
+.receipt::after {
+    top: 100%;
+    background-image: conic-gradient(from 135deg at top, transparent 90deg, var(--color-paper) 0);
+}
+
+.receipt-rule {
+    border: 0;
+    border-top: 2px dashed var(--color-ink-faint);
+    margin: 0.6rem 0;
+}
+
+.receipt-rule-double {
+    border: 0;
+    border-top: 2px dashed var(--color-ink-faint);
+    border-bottom: 2px dashed var(--color-ink-faint);
+    height: 5px;
+    margin: 0.6rem 0;
+}
+
+.receipt-input {
+    width: 100%;
+    min-width: 0;
+    background: transparent;
+    border: 0;
+    border-bottom: 2px dotted var(--color-ink-faint);
+    font: inherit;
+    text-transform: uppercase;
+    color: var(--color-ink);
+    outline: none;
+}
+
+.receipt-input:focus {
+    border-bottom-color: var(--color-ink);
+}
+
+.receipt-input::placeholder {
+    color: var(--color-ink-faint);
+}
+
+.receipt-btn {
+    font: inherit;
+    text-transform: uppercase;
+    color: var(--color-ink);
+    cursor: pointer;
+}
+
+.receipt-btn::before {
+    content: "[ ";
+}
+
+.receipt-btn::after {
+    content: " ]";
+}
+
+.receipt-btn:hover {
+    color: black;
+}
+
+.receipt-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+/* uneven bar widths so it reads as a barcode rather than stripes */
+.barcode {
+    height: 48px;
+    margin: 0.75rem 0 0.5rem;
+    background-image: repeating-linear-gradient(90deg,
+        var(--color-ink) 0 2px, transparent 2px 4px,
+        var(--color-ink) 4px 5px, transparent 5px 8px,
+        var(--color-ink) 8px 11px, transparent 11px 12px,
+        var(--color-ink) 12px 13px, transparent 13px 16px,
+        var(--color-ink) 16px 17px, transparent 17px 19px,
+        var(--color-ink) 19px 22px, transparent 22px 25px);
+    opacity: 0.85;
+}
