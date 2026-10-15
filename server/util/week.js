@@ -2,10 +2,10 @@ import Week from "../model/Week.js";
 import User from "../model/User.js";
 
 const WEEKDAYS = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+const DAY_MS = 24 * 60 * 60 * 1000;
 
-// returns the "YYYY-MM-DD" key of the week containing `now`, in the user's timezone
-export function currentWeekKey(timezone, weekStartsOn, now = new Date()) {
-    const parts = Object.fromEntries(
+function localParts(timezone, now) {
+    return Object.fromEntries(
         new Intl.DateTimeFormat("en-US", {
             timeZone: timezone,
             year: "numeric",
@@ -14,10 +14,24 @@ export function currentWeekKey(timezone, weekStartsOn, now = new Date()) {
             weekday: "short",
         }).formatToParts(now).map(p => [p.type, p.value])
     );
+}
 
+function keyFromUTC(date) {
+    return date.toISOString().slice(0, 10);
+}
+
+// returns the "YYYY-MM-DD" date of `now` in the user's timezone
+export function localDateKey(timezone, now = new Date()) {
+    const parts = localParts(timezone, now);
+    return keyFromUTC(new Date(Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day))));
+}
+
+// returns the "YYYY-MM-DD" key of the week containing `now`, in the user's timezone
+export function currentWeekKey(timezone, weekStartsOn, now = new Date()) {
+    const parts = localParts(timezone, now);
     const daysSinceStart = (WEEKDAYS[parts.weekday] - weekStartsOn + 7) % 7;
     const start = new Date(Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day) - daysSinceStart));
-    return start.toISOString().slice(0, 10);
+    return keyFromUTC(start);
 }
 
 export function weekStartFromKey(key) {
@@ -25,11 +39,39 @@ export function weekStartFromKey(key) {
     return new Date(Date.UTC(y, m - 1, d));
 }
 
-// closes every open week before the current one and adds its leftover (or overspend) to the reserve
-export async function closeFinishedWeeks(userId, currentKey) {
-    const finished = await Week.find({ userId, status: "open", weekKey: { $lt: currentKey } }).select("_id");
+export function addDays(key, days) {
+    return keyFromUTC(new Date(weekStartFromKey(key).getTime() + days * DAY_MS));
+}
+
+// the calendar month containing `key`, end exclusive
+export function monthBounds(key) {
+    const [y, m] = key.split("-").map(Number);
+    return {
+        start: keyFromUTC(new Date(Date.UTC(y, m - 1, 1))),
+        end: keyFromUTC(new Date(Date.UTC(y, m, 1))),
+    };
+}
+
+export function weekBounds(weekKey) {
+    return { start: weekKey, end: addDays(weekKey, 7) };
+}
+
+export function monthKey(periodStart) {
+    return `M:${periodStart}`;
+}
+
+// weeks created before months existed have no periodStart/periodEnd
+export function periodRange(period) {
+    const start = period.periodStart ?? period.weekKey;
+    return { start, end: period.periodEnd ?? addDays(start, 7) };
+}
+
+// closes every open period that ended on or before `today` and adds its leftover (or overspend) to the reserve
+export async function closeFinishedWeeks(userId, today) {
+    const open = await Week.find({ userId, status: "open" }).select("_id weekKey periodStart periodEnd");
+    const finished = open.filter(period => periodRange(period).end <= today);
     for (const { _id } of finished) {
-        // match on status so a concurrent request can't credit the same week twice
+        // match on status so a concurrent request can't credit the same period twice
         const closed = await Week.findOneAndUpdate(
             { _id, status: "open" },
             [{
@@ -47,23 +89,42 @@ export async function closeFinishedWeeks(userId, currentKey) {
     }
 }
 
+// the natural period for the user's mode when nothing is open, e.g. a new week or a new calendar month
+function naturalPeriod(user, today) {
+    if (user.budgetPeriod === "monthly") {
+        const { start, end } = monthBounds(today);
+        return { kind: "month", weekKey: monthKey(start), periodStart: start, periodEnd: end, startingBalance: user.monthlyAllowance };
+    }
+    const weekKey = currentWeekKey(user.timezone, user.weekStartsOn);
+    const { start, end } = weekBounds(weekKey);
+    return { kind: "week", weekKey, periodStart: start, periodEnd: end, startingBalance: user.weeklyAllowance };
+}
+
 export async function getOrCreateCurrentWeek(userId) {
     const user = await User.findById(userId);
     if (!user) {
         return null;
     }
 
-    const weekKey = currentWeekKey(user.timezone, user.weekStartsOn);
-    await closeFinishedWeeks(userId, weekKey);
+    const today = localDateKey(user.timezone);
+    await closeFinishedWeeks(userId, today);
+
+    // anything still open covers today, it may be a partial period left by a mode switch
+    const open = await Week.findOne({ userId, status: "open" }).sort({ weekStart: -1 });
+    if (open) {
+        return open;
+    }
+
+    const { weekKey, ...fields } = naturalPeriod(user, today);
     const filter = { userId, weekKey };
     try {
         return await Week.findOneAndUpdate(
             filter,
-            { $setOnInsert: { weekStart: weekStartFromKey(weekKey), startingBalance: user.weeklyAllowance } },
+            { $setOnInsert: { ...fields, weekStart: weekStartFromKey(fields.periodStart) } },
             { upsert: true, returnDocument: "after" }
         );
     } catch (err) {
-        // two requests raced to create the same week; the other one won
+        // two requests raced to create the same period; the other one won
         if (err.code === 11000) {
             return await Week.findOne(filter);
         }

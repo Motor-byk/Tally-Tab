@@ -338,6 +338,8 @@ describe("NoSQL injection", () => {
     it("rejects operator objects in settings", async () => {
         const { agent } = await newUser(app);
         assert.equal((await agent.patch("/api/settings").send({ weeklyAllowance: { $gt: 0 } })).status, 400);
+        assert.equal((await agent.patch("/api/settings").send({ monthlyAllowance: { $gt: 0 } })).status, 400);
+        assert.equal((await agent.patch("/api/settings").send({ budgetPeriod: { $ne: "weekly" } })).status, 400);
     });
 
     it("does not pollute Object.prototype from request bodies", async () => {
@@ -425,6 +427,18 @@ describe("input validation and data integrity", () => {
         for (const weeklyAllowance of [-1, 1.5, "100", null]) {
             assert.equal((await agent.patch("/api/settings").send({ weeklyAllowance })).status, 400, String(weeklyAllowance));
         }
+        for (const monthlyAllowance of [-1, 1.5, "100", null, MAX_CENTS + 1]) {
+            assert.equal((await agent.patch("/api/settings").send({ monthlyAllowance })).status, 400, String(monthlyAllowance));
+        }
+    });
+
+    it("rejects unknown budget periods and empty settings updates", async () => {
+        const { agent } = await newUser(app);
+        for (const budgetPeriod of ["yearly", "Weekly", null, 1]) {
+            assert.equal((await agent.patch("/api/settings").send({ budgetPeriod })).status, 400, String(budgetPeriod));
+        }
+        assert.equal((await agent.patch("/api/settings").send({})).status, 400);
+        assert.equal((await agent.get("/api/auth/me")).body.budgetPeriod, "weekly");
     });
 
     it("accepts values right at the limits", async () => {

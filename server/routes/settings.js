@@ -1,35 +1,144 @@
 import express from "express";
 import User from "../model/User.js";
 import Week from "../model/Week.js";
-import { getOrCreateCurrentWeek } from "../util/week.js";
+import {
+    getOrCreateCurrentWeek, closeFinishedWeeks, currentWeekKey, localDateKey, weekStartFromKey,
+    monthBounds, weekBounds, monthKey, periodRange,
+} from "../util/week.js";
 import { MAX_CENTS } from "../util/limits.js";
 
 const router = express.Router();
 
+const BUDGET_PERIODS = ["weekly", "monthly"];
+
+function isValidAllowance(value) {
+    return Number.isInteger(value) && value >= 0 && value <= MAX_CENTS;
+}
+
+// weekly -> monthly: the current week becomes the rest of this month, keeping its expenses
+async function switchToMonthly(user, week) {
+    const { start: weekStart } = periodRange(week);
+    const month = monthBounds(localDateKey(user.timezone));
+    const periodStart = weekStart > month.start ? weekStart : month.start;
+    return await Week.findOneAndUpdate(
+        { _id: week._id, status: "open", kind: "week" },
+        {
+            kind: "month",
+            weekKey: monthKey(periodStart),
+            weekStart: weekStartFromKey(periodStart),
+            periodStart,
+            periodEnd: month.end,
+            startingBalance: user.monthlyAllowance,
+        },
+        { returnDocument: "after" }
+    );
+}
+
+// monthly -> weekly: the month closes early with the expenses from before this week,
+// everything from this week on moves into a new week
+async function switchToWeekly(user, month) {
+    const wk = currentWeekKey(user.timezone, user.weekStartsOn);
+    const week = weekBounds(wk);
+    const { start: monthStart } = periodRange(month);
+
+    if (monthStart >= wk) {
+        // the month started inside this week, so none of it is before the week and it just becomes the week
+        return await Week.findOneAndUpdate(
+            { _id: month._id, status: "open", kind: "month" },
+            {
+                kind: "week",
+                weekKey: wk,
+                periodEnd: week.end,
+                startingBalance: user.weeklyAllowance,
+            },
+            { returnDocument: "after" }
+        );
+    }
+
+    const moved = month.expenses.filter(e => localDateKey(user.timezone, e.spentAt) >= wk);
+    const movedTotal = moved.reduce((total, e) => total + e.amount, 0);
+
+    // matching on status means a concurrent switch can only split the month once
+    const cut = await Week.findOneAndUpdate(
+        { _id: month._id, status: "open", kind: "month" },
+        {
+            $pull: { expenses: { _id: { $in: moved.map(e => e._id) } } },
+            $inc: { totalSpend: -movedTotal },
+            $set: { periodEnd: wk },
+        },
+        { returnDocument: "after" }
+    );
+    if (!cut) {
+        return await getOrCreateCurrentWeek(user._id);
+    }
+    // the month now ends at the start of this week, so the normal close credits its leftover to the reserve
+    await closeFinishedWeeks(user._id, localDateKey(user.timezone));
+
+    return await Week.findOneAndUpdate(
+        { userId: user._id, weekKey: wk },
+        {
+            $setOnInsert: {
+                kind: "week",
+                weekStart: weekStartFromKey(wk),
+                periodStart: week.start,
+                periodEnd: week.end,
+                startingBalance: user.weeklyAllowance,
+            },
+            $push: { expenses: { $each: moved.map(e => e.toObject()) } },
+            $inc: { totalSpend: movedTotal },
+        },
+        { upsert: true, returnDocument: "after" }
+    );
+}
+
 router.patch("/", async (req, res) => {
     try {
-        const { weeklyAllowance } = req.body ?? {};
-        if (!Number.isInteger(weeklyAllowance) || weeklyAllowance < 0 || weeklyAllowance > MAX_CENTS) {
+        const { budgetPeriod, weeklyAllowance, monthlyAllowance } = req.body ?? {};
+        if (budgetPeriod === undefined && weeklyAllowance === undefined && monthlyAllowance === undefined) {
+            return res.status(400).json({ message: "Nothing to update" });
+        }
+        if (budgetPeriod !== undefined && !BUDGET_PERIODS.includes(budgetPeriod)) {
+            return res.status(400).json({ message: "Budget period must be weekly or monthly" });
+        }
+        if ((weeklyAllowance !== undefined && !isValidAllowance(weeklyAllowance))
+            || (monthlyAllowance !== undefined && !isValidAllowance(monthlyAllowance))) {
             return res.status(400).json({ message: "Starting balance must be between $0 and $1,000,000" });
         }
 
-        const user = await User.findByIdAndUpdate(
-            req.userId,
-            { weeklyAllowance },
-            { returnDocument: "after", runValidators: true }
-        ).select("-passwordHash");
+        // closes anything that already finished under the old settings
+        const current = await getOrCreateCurrentWeek(req.userId);
+        if (!current) {
+            return res.status(401).json({ message: "Not authenticated" });
+        }
+
+        const update = Object.fromEntries(
+            Object.entries({ budgetPeriod, weeklyAllowance, monthlyAllowance }).filter(([, v]) => v !== undefined)
+        );
+        const user = await User.findByIdAndUpdate(req.userId, update, { returnDocument: "after", runValidators: true });
         if (!user) {
             return res.status(401).json({ message: "Not authenticated" });
         }
 
-        // only the current week picks up the new balance, past weeks keep theirs
-        const currentWeek = await getOrCreateCurrentWeek(req.userId);
-        const week = await Week.findByIdAndUpdate(
-            currentWeek._id,
-            { startingBalance: weeklyAllowance },
-            { returnDocument: "after" }
-        );
-        res.status(200).json({ user, week });
+        let week = current;
+        const wantsMonth = user.budgetPeriod === "monthly";
+        if (wantsMonth && current.kind === "week") {
+            week = await switchToMonthly(user, current);
+        } else if (!wantsMonth && current.kind === "month") {
+            week = await switchToWeekly(user, current);
+        } else {
+            // only the current period picks up the new balance, past ones keep theirs
+            week = await Week.findByIdAndUpdate(
+                current._id,
+                { startingBalance: wantsMonth ? user.monthlyAllowance : user.weeklyAllowance },
+                { returnDocument: "after" }
+            );
+        }
+        // a concurrent request changed the period under us, fall back to whatever is current now
+        week ??= await getOrCreateCurrentWeek(req.userId);
+
+        // re-fetch so the reserve includes a month that was just closed early
+        const fresh = await User.findById(req.userId).select("-passwordHash");
+        res.status(200).json({ user: fresh, week });
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: "Server error" });

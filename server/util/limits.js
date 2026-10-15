@@ -6,3 +6,4 @@ export const MAX_ITEM_NAME_LENGTH = 100;
 export const MAX_CATEGORY_LENGTH = 50;
 export const MAX_CENTS = 100_000_000; // $1,000,000
 export const MAX_EXPENSES_PER_WEEK = 500;
+export const MAX_EXPENSES_PER_MONTH = 2000;

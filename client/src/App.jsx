@@ -67,11 +67,11 @@ function App() {
         setSettingsOpen(false);
     }
 
-    async function handleSaveSettings(weeklyAllowance) {
+    async function handleSaveSettings(settings) {
         const data = await requestWeek("/api/settings", {
             method: "PATCH",
             headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({weeklyAllowance}),
+            body: JSON.stringify(settings),
         });
         setUser(data.user);
         setWeek(data.week);
@@ -117,7 +117,7 @@ function App() {
     return (
         <div className="min-h-screen px-4 py-8">
             <Receipt>
-                <Topbar weekStart={week.weekStart} onLogout={handleLogout} onOpenSettings={() => setSettingsOpen(true)} />
+                <Topbar weekStart={week.weekStart} kind={week.kind} onLogout={handleLogout} onOpenSettings={() => setSettingsOpen(true)} />
                 <hr className="receipt-rule" />
                 {weekError && <p className="text-ink-red text-base">{weekError}</p>}
                 <WeeklyExpenses expenses={expenses}
@@ -125,6 +125,7 @@ function App() {
                     currentBalance={currentBalance}
                     reserve={user.reserveCash}
                     projectedReserve={currentBalance < 0 ? user.reserveCash + currentBalance : undefined}
+                    kind={week.kind}
                     deletingId={deletingId}
                     onDelete={handleDeleteExpense}/>
                 <hr className="receipt-rule" />

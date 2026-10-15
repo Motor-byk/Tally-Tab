@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { currentWeekKey, weekStartFromKey } from "./week.js";
+import { currentWeekKey, weekStartFromKey, localDateKey, monthBounds, addDays, periodRange } from "./week.js";
 
 describe("currentWeekKey()", () => {
     it("returns the monday of the week when weeks start on monday", () => {
@@ -36,5 +36,41 @@ describe("currentWeekKey()", () => {
 describe("weekStartFromKey()", () => {
     it("returns UTC midnight of the key's date", () => {
         assert.equal(weekStartFromKey("2026-09-14").toISOString(), "2026-09-14T00:00:00.000Z");
+    });
+});
+
+describe("localDateKey()", () => {
+    it("uses the user's local date, not the UTC date", () => {
+        const now = new Date("2026-10-01T03:00:00Z");
+        assert.equal(localDateKey("America/Los_Angeles", now), "2026-09-30");
+        assert.equal(localDateKey("UTC", now), "2026-10-01");
+    });
+});
+
+describe("monthBounds()", () => {
+    it("returns the first of the month and the first of the next month", () => {
+        assert.deepEqual(monthBounds("2026-10-15"), { start: "2026-10-01", end: "2026-11-01" });
+    });
+
+    it("crosses the year boundary", () => {
+        assert.deepEqual(monthBounds("2026-12-31"), { start: "2026-12-01", end: "2027-01-01" });
+    });
+
+    it("handles february in leap and non-leap years", () => {
+        assert.equal(monthBounds("2028-02-10").end, "2028-03-01");
+        assert.equal(monthBounds("2027-02-10").end, "2027-03-01");
+    });
+});
+
+describe("addDays()", () => {
+    it("crosses month boundaries", () => {
+        assert.equal(addDays("2026-09-29", 7), "2026-10-06");
+        assert.equal(addDays("2026-10-01", -1), "2026-09-30");
+    });
+});
+
+describe("periodRange()", () => {
+    it("treats weeks without period fields as a full week from weekKey", () => {
+        assert.deepEqual(periodRange({ weekKey: "2020-01-06" }), { start: "2020-01-06", end: "2020-01-13" });
     });
 });

@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 import Week from "../model/Week.js";
 import User from "../model/User.js";
 import { getOrCreateCurrentWeek } from "../util/week.js";
-import { MAX_ITEM_NAME_LENGTH, MAX_CATEGORY_LENGTH, MAX_CENTS, MAX_EXPENSES_PER_WEEK } from "../util/limits.js";
+import { MAX_ITEM_NAME_LENGTH, MAX_CATEGORY_LENGTH, MAX_CENTS, MAX_EXPENSES_PER_WEEK, MAX_EXPENSES_PER_MONTH } from "../util/limits.js";
 
 const router = express.Router();
 
@@ -47,8 +47,9 @@ router.post("/current/expenses", async (req, res) => {
         }
 
         // the size check is part of the filter so concurrent adds can't push past the cap
+        const cap = week.kind === "month" ? MAX_EXPENSES_PER_MONTH : MAX_EXPENSES_PER_WEEK;
         const updated = await Week.findOneAndUpdate(
-            { _id: week._id, [`expenses.${MAX_EXPENSES_PER_WEEK - 1}`]: { $exists: false } },
+            { _id: week._id, [`expenses.${cap - 1}`]: { $exists: false } },
             {
                 $push: { expenses: { itemName: itemName.trim(), category: (category ?? "").trim(), amount } },
                 $inc: { totalSpend: amount },
@@ -56,7 +57,7 @@ router.post("/current/expenses", async (req, res) => {
             { returnDocument: "after", runValidators: true }
         );
         if (!updated) {
-            return res.status(409).json({ message: `A week can have at most ${MAX_EXPENSES_PER_WEEK} expenses` });
+            return res.status(409).json({ message: `A ${week.kind} can have at most ${cap} expenses` });
         }
         res.status(201).json(updated);
     } catch (err) {

@@ -7,7 +7,9 @@ const userSchema = new Schema({
   passwordHash: { type: String, required: true },
 
   // settings
-  weeklyAllowance: { type: Number, default: 0 },   // cents
+  budgetPeriod:     { type: String, enum: ['weekly', 'monthly'], default: 'weekly' },
+  weeklyAllowance:  { type: Number, default: 0 },   // cents
+  monthlyAllowance: { type: Number, default: 0 },   // cents
   weekStartsOn:    { type: Number, default: 1 },    // 0 = Sun, 1 = Mon
   timezone:        { type: String, default: 'America/Los_Angeles' },
 

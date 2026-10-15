@@ -1,6 +1,6 @@
 import { toStringCents, formatSigned } from "../util/expenseCalc";
 
-export default function WeeklyExpenses({expenses = [], startingBalance = 0, currentBalance, reserve = 0, projectedReserve, deletingId, onDelete}){
+export default function WeeklyExpenses({expenses = [], startingBalance = 0, currentBalance, reserve = 0, projectedReserve, kind = "week", deletingId, onDelete}){
     const totalSpent = expenses.reduce((total, cur) => total + cur.amount, 0);
 
     return (
@@ -42,7 +42,7 @@ export default function WeeklyExpenses({expenses = [], startingBalance = 0, curr
             </div>
             {projectedReserve !== undefined &&
                 <div className="flex justify-between pl-4 text-base text-ink-faint">
-                    <span>After this week</span>
+                    <span>After this {kind}</span>
                     <span className={projectedReserve < 0 ? "text-ink-red" : undefined}>{formatSigned(projectedReserve)}</span>
                 </div>}
         </section>

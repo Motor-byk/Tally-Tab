@@ -11,8 +11,12 @@ const expenseSchema = new Schema({
 
 const weekSchema = new Schema({
     userId: {type:mongoose.Schema.Types.ObjectId, ref: "User", required: true},
-    weekStart: {type: Date, required: true},
-    weekKey: {type: String, required: true}, // "YYYY-MM-DD" of weekStart
+    // a budget period, named Week from before months existed
+    kind: {type: String, enum: ["week", "month"], default: "week"},
+    weekStart: {type: Date, required: true}, // UTC midnight of periodStart
+    weekKey: {type: String, required: true}, // "YYYY-MM-DD" of the week, or "M:" + periodStart for months
+    periodStart: String, // "YYYY-MM-DD", missing on weeks created before months existed
+    periodEnd: String,   // "YYYY-MM-DD", exclusive
     startingBalance: {type: Number, required: true},
     totalSpend: {type: Number, default: 0},
     expenses: [expenseSchema],
