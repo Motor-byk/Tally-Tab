@@ -509,7 +509,7 @@ describe("race conditions", () => {
     it("credits a closed week to the reserve exactly once under concurrent requests", async () => {
         const { agent, user } = await newUser(app);
         await Period.create({
-            userId: user._id, weekKey: "2020-01-06", weekStart: new Date("2020-01-06"),
+            userId: user._id, periodKey: "2020-01-06", periodStart: "2020-01-06", periodEnd: "2020-01-13",
             startingBalance: 10000, totalSpend: 2500,
         });
         await Promise.all(Array.from({ length: 15 }, () => agent.get("/api/period/current")));
@@ -520,7 +520,7 @@ describe("race conditions", () => {
     it("refunds a deleted expense from a closed week exactly once under concurrent deletes", async () => {
         const { agent, user } = await newUser(app);
         const period = await Period.create({
-            userId: user._id, weekKey: "2020-01-13", weekStart: new Date("2020-01-13"),
+            userId: user._id, periodKey: "2020-01-13", periodStart: "2020-01-13", periodEnd: "2020-01-20",
             startingBalance: 10000, totalSpend: 3000, expenses: [{ itemName: "x", amount: 3000 }],
             status: "closed", rollovertoReserve: 7000,
         });

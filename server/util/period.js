@@ -52,24 +52,17 @@ export function monthBounds(key) {
     };
 }
 
-export function weekBounds(weekKey) {
-    return { start: weekKey, end: addDays(weekKey, 7) };
+export function weekBounds(key) {
+    return { start: key, end: addDays(key, 7) };
 }
 
 export function monthKey(periodStart) {
     return `M:${periodStart}`;
 }
 
-// weeks created before months existed have no periodStart/periodEnd
-export function periodRange(period) {
-    const start = period.periodStart ?? period.weekKey;
-    return { start, end: period.periodEnd ?? addDays(start, 7) };
-}
-
 // closes every open period that ended on or before `today` and adds its leftover (or overspend) to the reserve
 export async function closeFinishedPeriods(userId, today) {
-    const open = await Period.find({ userId, status: "open" }).select("_id weekKey periodStart periodEnd");
-    const finished = open.filter(period => periodRange(period).end <= today);
+    const finished = await Period.find({ userId, status: "open", periodEnd: { $lte: today } }).select("_id");
     for (const { _id } of finished) {
         // match on status so a concurrent request can't credit the same period twice
         const closed = await Period.findOneAndUpdate(
@@ -93,11 +86,11 @@ export async function closeFinishedPeriods(userId, today) {
 function naturalPeriod(user, today) {
     if (user.budgetPeriod === "monthly") {
         const { start, end } = monthBounds(today);
-        return { kind: "month", weekKey: monthKey(start), periodStart: start, periodEnd: end, startingBalance: user.monthlyAllowance };
+        return { kind: "month", periodKey: monthKey(start), periodStart: start, periodEnd: end, startingBalance: user.monthlyAllowance };
     }
-    const weekKey = currentWeekKey(user.timezone, user.weekStartsOn);
-    const { start, end } = weekBounds(weekKey);
-    return { kind: "week", weekKey, periodStart: start, periodEnd: end, startingBalance: user.weeklyAllowance };
+    const periodKey = currentWeekKey(user.timezone, user.weekStartsOn);
+    const { start, end } = weekBounds(periodKey);
+    return { kind: "week", periodKey, periodStart: start, periodEnd: end, startingBalance: user.weeklyAllowance };
 }
 
 export async function getOrCreateCurrentPeriod(userId) {
@@ -110,17 +103,17 @@ export async function getOrCreateCurrentPeriod(userId) {
     await closeFinishedPeriods(userId, today);
 
     // anything still open covers today, it may be a partial period left by a mode switch
-    const open = await Period.findOne({ userId, status: "open" }).sort({ weekStart: -1 });
+    const open = await Period.findOne({ userId, status: "open" }).sort({ periodStart: -1 });
     if (open) {
         return open;
     }
 
-    const { weekKey, ...fields } = naturalPeriod(user, today);
-    const filter = { userId, weekKey };
+    const { periodKey, ...fields } = naturalPeriod(user, today);
+    const filter = { userId, periodKey };
     try {
         return await Period.findOneAndUpdate(
             filter,
-            { $setOnInsert: { ...fields, weekStart: dateFromKey(fields.periodStart) } },
+            { $setOnInsert: fields },
             { upsert: true, returnDocument: "after" }
         );
     } catch (err) {

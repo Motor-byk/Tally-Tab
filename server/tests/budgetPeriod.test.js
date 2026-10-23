@@ -29,7 +29,7 @@ describe("monthly budget", () => {
         const { period, user: me } = (await agent.get("/api/period/current")).body;
         const month = monthBounds(localDateKey(TZ));
         assert.equal(period.kind, "month");
-        assert.equal(period.weekKey, monthKey(month.start));
+        assert.equal(period.periodKey, monthKey(month.start));
         assert.equal(period.periodEnd, month.end);
         assert.equal(period.startingBalance, 40000);
         assert.equal(me.reserveCash, 0);
@@ -43,7 +43,7 @@ describe("monthly budget", () => {
         await agent.patch("/api/settings").send({ budgetPeriod: "monthly", monthlyAllowance: 31000 }).expect(200);
         await Period.deleteMany({ userId: user._id });
         await Period.create({
-            userId: user._id, kind: "month", weekKey: "M:2020-01-01", weekStart: new Date("2020-01-01"),
+            userId: user._id, kind: "month", periodKey: "M:2020-01-01",
             periodStart: "2020-01-01", periodEnd: "2020-02-01", startingBalance: 31000, totalSpend: 1000,
         });
         await Promise.all(Array.from({ length: 15 }, () => agent.get("/api/period/current")));
@@ -87,7 +87,7 @@ describe("switching budget period", () => {
         const periodStart = addDays(wk, -10);
         await Period.deleteMany({ userId: user._id });
         await Period.create({
-            userId: user._id, kind: "month", weekKey: monthKey(periodStart), weekStart: new Date(periodStart),
+            userId: user._id, kind: "month", periodKey: monthKey(periodStart),
             periodStart, periodEnd: monthBounds(today).end, startingBalance: 30000, totalSpend: 1300,
             expenses: [
                 { itemName: "early", amount: 1000, spentAt: localNoon(addDays(wk, -5)) },
@@ -98,12 +98,12 @@ describe("switching budget period", () => {
         const res = await agent.patch("/api/settings").send({ budgetPeriod: "weekly", weeklyAllowance: 7000 }).expect(200);
         const { period } = res.body;
         assert.equal(period.kind, "week");
-        assert.equal(period.weekKey, wk);
+        assert.equal(period.periodKey, wk);
         assert.equal(period.startingBalance, 7000);
         assert.deepEqual(period.expenses.map(e => e.itemName), ["late"]);
         assert.equal(period.totalSpend, 300);
 
-        const closed = await Period.findOne({ userId: user._id, weekKey: monthKey(periodStart) });
+        const closed = await Period.findOne({ userId: user._id, periodKey: monthKey(periodStart) });
         const expected = 30000 - 1000;
         assert.equal(closed.status, "closed");
         assert.equal(closed.periodEnd, wk);

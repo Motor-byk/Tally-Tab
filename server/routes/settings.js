@@ -2,8 +2,8 @@ import express from "express";
 import User from "../model/User.js";
 import Period from "../model/Period.js";
 import {
-    getOrCreateCurrentPeriod, closeFinishedPeriods, currentWeekKey, localDateKey, dateFromKey,
-    monthBounds, weekBounds, monthKey, periodRange,
+    getOrCreateCurrentPeriod, closeFinishedPeriods, currentWeekKey, localDateKey,
+    monthBounds, weekBounds, monthKey,
 } from "../util/period.js";
 import { MAX_CENTS } from "../util/limits.js";
 
@@ -17,15 +17,13 @@ function isValidAllowance(value) {
 
 // weekly -> monthly: the current week becomes the rest of this month, keeping its expenses
 async function switchToMonthly(user, week) {
-    const { start: weekStart } = periodRange(week);
     const month = monthBounds(localDateKey(user.timezone));
-    const periodStart = weekStart > month.start ? weekStart : month.start;
+    const periodStart = week.periodStart > month.start ? week.periodStart : month.start;
     return await Period.findOneAndUpdate(
         { _id: week._id, status: "open", kind: "week" },
         {
             kind: "month",
-            weekKey: monthKey(periodStart),
-            weekStart: dateFromKey(periodStart),
+            periodKey: monthKey(periodStart),
             periodStart,
             periodEnd: month.end,
             startingBalance: user.monthlyAllowance,
@@ -39,15 +37,14 @@ async function switchToMonthly(user, week) {
 async function switchToWeekly(user, month) {
     const wk = currentWeekKey(user.timezone, user.weekStartsOn);
     const week = weekBounds(wk);
-    const { start: monthStart } = periodRange(month);
 
-    if (monthStart >= wk) {
+    if (month.periodStart >= wk) {
         // the month started inside this week, so none of it is before the week and it just becomes the week
         return await Period.findOneAndUpdate(
             { _id: month._id, status: "open", kind: "month" },
             {
                 kind: "week",
-                weekKey: wk,
+                periodKey: wk,
                 periodEnd: week.end,
                 startingBalance: user.weeklyAllowance,
             },
@@ -75,11 +72,10 @@ async function switchToWeekly(user, month) {
     await closeFinishedPeriods(user._id, localDateKey(user.timezone));
 
     return await Period.findOneAndUpdate(
-        { userId: user._id, weekKey: wk },
+        { userId: user._id, periodKey: wk },
         {
             $setOnInsert: {
                 kind: "week",
-                weekStart: dateFromKey(wk),
                 periodStart: week.start,
                 periodEnd: week.end,
                 startingBalance: user.weeklyAllowance,

@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { currentWeekKey, dateFromKey, localDateKey, monthBounds, addDays, periodRange } from "./period.js";
+import { currentWeekKey, dateFromKey, localDateKey, monthBounds, addDays } from "./period.js";
 
 describe("currentWeekKey()", () => {
     it("returns the monday of the week when weeks start on monday", () => {
@@ -66,11 +66,5 @@ describe("addDays()", () => {
     it("crosses month boundaries", () => {
         assert.equal(addDays("2026-09-29", 7), "2026-10-06");
         assert.equal(addDays("2026-10-01", -1), "2026-09-30");
-    });
-});
-
-describe("periodRange()", () => {
-    it("treats weeks without period fields as a full week from weekKey", () => {
-        assert.deepEqual(periodRange({ weekKey: "2020-01-06" }), { start: "2020-01-06", end: "2020-01-13" });
     });
 });
