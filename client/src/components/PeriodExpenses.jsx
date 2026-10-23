@@ -1,6 +1,6 @@
 import { toStringCents, formatSigned } from "../util/expenseCalc";
 
-export default function WeeklyExpenses({expenses = [], startingBalance = 0, currentBalance, reserve = 0, projectedReserve, kind = "week", deletingId, onDelete}){
+export default function PeriodExpenses({expenses = [], startingBalance = 0, currentBalance, reserve = 0, projectedReserve, kind = "week", deletingId, onDelete}){
     const totalSpent = expenses.reduce((total, cur) => total + cur.amount, 0);
 
     return (

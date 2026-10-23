@@ -6,7 +6,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import connectDB from "./configuration/connection.js";
 import authRouter from "./routes/auth.js";
-import weekRouter from "./routes/week.js";
+import periodRouter from "./routes/period.js";
 import settingsRouter from "./routes/settings.js";
 import requireAuth from "./middleware/requireAuth.js";
 
@@ -65,8 +65,8 @@ app.use("/api", async (req, res, next) => {
 //auth
 app.use("/api/auth", authRouter);
 
-//week
-app.use("/api/week", requireAuth, weekRouter);
+//period
+app.use("/api/period", requireAuth, periodRouter);
 
 //settings
 app.use("/api/settings", requireAuth, settingsRouter);

@@ -7,7 +7,7 @@ import crypto from "crypto";
 import { startApp, stopApp, newUser, uniqueEmail, anon, TEST_SECRET } from "./helpers.js";
 import { MAX_CENTS, MAX_ITEM_NAME_LENGTH, MAX_CATEGORY_LENGTH, MAX_EXPENSES_PER_WEEK } from "../util/limits.js";
 import RevokedToken from "../model/RevokedToken.js";
-import Week from "../model/Week.js";
+import Period from "../model/Period.js";
 import User from "../model/User.js";
 
 let app;
@@ -16,9 +16,9 @@ after(stopApp);
 
 const PROTECTED = [
     ["get", "/api/auth/me"],
-    ["get", "/api/week/current"],
-    ["post", "/api/week/current/expenses"],
-    ["delete", `/api/week/${new mongoose.Types.ObjectId()}/expenses/${new mongoose.Types.ObjectId()}`],
+    ["get", "/api/period/current"],
+    ["post", "/api/period/current/expenses"],
+    ["delete", `/api/period/${new mongoose.Types.ObjectId()}/expenses/${new mongoose.Types.ObjectId()}`],
     ["patch", "/api/settings"],
 ];
 
@@ -83,12 +83,12 @@ describe("authentication", () => {
                 : await req;
             assert.equal(res.status, 401, `${method.toUpperCase()} ${path}`);
         }
-        assert.equal(await Week.countDocuments({ userId: jwt.decode(ghost).sub }), 0, "a week was created for a nonexistent user");
+        assert.equal(await Period.countDocuments({ userId: jwt.decode(ghost).sub }), 0, "a period was created for a nonexistent user");
     });
 
     it("rejects tokens with a non-ObjectId subject without a 500", async () => {
         const weird = sign({ sub: { $ne: null } });
-        const res = await withToken("get", "/api/week/current", weird);
+        const res = await withToken("get", "/api/period/current", weird);
         assert.equal(res.status, 401);
     });
 
@@ -148,9 +148,9 @@ describe("credentials and accounts", () => {
         const { agent, email, password } = await newUser(app);
         assertNoSecrets((await agent.get("/api/auth/me")).body);
         assertNoSecrets((await anon(app, "post", "/api/auth/login").send({ email, password })).body);
-        assertNoSecrets((await agent.get("/api/week/current")).body);
+        assertNoSecrets((await agent.get("/api/period/current")).body);
         assertNoSecrets((await agent.patch("/api/settings").send({ weeklyAllowance: 500 })).body);
-        assertNoSecrets((await agent.post("/api/week/current/expenses").send({ itemName: "x", amount: 1 })).body);
+        assertNoSecrets((await agent.post("/api/period/current/expenses").send({ itemName: "x", amount: 1 })).body);
     });
 
     it("hashes passwords with bcrypt at cost >= 10", async () => {
@@ -181,8 +181,8 @@ describe("credentials and accounts", () => {
         assert.equal(me.reserveCash, 0);
         assert.equal(me.email, user.email);
         assert.equal(me.timezone, "America/Los_Angeles");
-        // a bad timezone would 500 every week lookup
-        assert.equal((await agent.get("/api/week/current")).status, 200);
+        // a bad timezone would 500 every period lookup
+        assert.equal((await agent.get("/api/period/current")).status, 200);
     });
 
     it("treats emails case- and whitespace-insensitively so accounts can't be duplicated", async () => {
@@ -323,14 +323,14 @@ describe("NoSQL injection", () => {
             { itemName: "x", amount: 1, category: { $ne: "" } },
             { itemName: ["x"], amount: 1 },
         ]) {
-            assert.equal((await agent.post("/api/week/current/expenses").send(body)).status, 400, JSON.stringify(body));
+            assert.equal((await agent.post("/api/period/current/expenses").send(body)).status, 400, JSON.stringify(body));
         }
     });
 
     it("rejects operator-shaped route params", async () => {
         const { agent } = await newUser(app);
         for (const p of ["%7B%22%24ne%22%3Anull%7D", "[$ne]=x", "000000000000000000000000' || '1'=='1"]) {
-            const res = await agent.delete(`/api/week/${p}/expenses/${p}`);
+            const res = await agent.delete(`/api/period/${p}/expenses/${p}`);
             assert.equal(res.status, 404, p);
         }
     });
@@ -344,7 +344,7 @@ describe("NoSQL injection", () => {
 
     it("does not pollute Object.prototype from request bodies", async () => {
         const { agent } = await newUser(app);
-        await agent.post("/api/week/current/expenses")
+        await agent.post("/api/period/current/expenses")
             .set("Content-Type", "application/json")
             .send('{"itemName":"x","amount":1,"__proto__":{"polluted":true},"constructor":{"prototype":{"polluted2":true}}}');
         assert.equal({}.polluted, undefined);
@@ -356,34 +356,34 @@ describe("authorization (IDOR)", () => {
     it("prevents one user from deleting another user's expense", async () => {
         const alice = await newUser(app);
         const mallory = await newUser(app);
-        const week = (await alice.agent.post("/api/week/current/expenses").send({ itemName: "rent", amount: 5000 })).body;
-        const expenseId = week.expenses[0]._id;
+        const period = (await alice.agent.post("/api/period/current/expenses").send({ itemName: "rent", amount: 5000 })).body;
+        const expenseId = period.expenses[0]._id;
 
-        const res = await mallory.agent.delete(`/api/week/${week._id}/expenses/${expenseId}`);
+        const res = await mallory.agent.delete(`/api/period/${period._id}/expenses/${expenseId}`);
         assert.equal(res.status, 404);
 
-        const after = (await alice.agent.get("/api/week/current")).body.week;
+        const after = (await alice.agent.get("/api/period/current")).body.period;
         assert.equal(after.expenses.length, 1);
         assert.equal(after.totalSpend, 5000);
     });
 
-    it("prevents mixing your week id with someone else's expense id", async () => {
+    it("prevents mixing your period id with someone else's expense id", async () => {
         const alice = await newUser(app);
         const mallory = await newUser(app);
-        const aWeek = (await alice.agent.post("/api/week/current/expenses").send({ itemName: "a", amount: 100 })).body;
-        const mWeek = (await mallory.agent.post("/api/week/current/expenses").send({ itemName: "m", amount: 100 })).body;
+        const aPeriod = (await alice.agent.post("/api/period/current/expenses").send({ itemName: "a", amount: 100 })).body;
+        const mPeriod = (await mallory.agent.post("/api/period/current/expenses").send({ itemName: "m", amount: 100 })).body;
 
-        const res = await mallory.agent.delete(`/api/week/${mWeek._id}/expenses/${aWeek.expenses[0]._id}`);
+        const res = await mallory.agent.delete(`/api/period/${mPeriod._id}/expenses/${aPeriod.expenses[0]._id}`);
         assert.equal(res.status, 404);
-        assert.equal((await mallory.agent.get("/api/week/current")).body.week.totalSpend, 100);
-        assert.equal((await alice.agent.get("/api/week/current")).body.week.expenses.length, 1);
+        assert.equal((await mallory.agent.get("/api/period/current")).body.period.totalSpend, 100);
+        assert.equal((await alice.agent.get("/api/period/current")).body.period.expenses.length, 1);
     });
 
-    it("never returns another user's data from /week/current or /auth/me", async () => {
+    it("never returns another user's data from /period/current or /auth/me", async () => {
         const alice = await newUser(app);
         const bob = await newUser(app);
-        await alice.agent.post("/api/week/current/expenses").send({ itemName: "alice-secret", amount: 100 });
-        const body = JSON.stringify((await bob.agent.get("/api/week/current")).body) + JSON.stringify((await bob.agent.get("/api/auth/me")).body);
+        await alice.agent.post("/api/period/current/expenses").send({ itemName: "alice-secret", amount: 100 });
+        const body = JSON.stringify((await bob.agent.get("/api/period/current")).body) + JSON.stringify((await bob.agent.get("/api/auth/me")).body);
         assert.ok(!body.includes("alice-secret"));
         assert.ok(!body.includes(alice.email));
     });
@@ -400,18 +400,18 @@ describe("input validation and data integrity", () => {
     it("rejects non-integer, negative, zero and string amounts", async () => {
         const { agent } = await newUser(app);
         for (const amount of [0, -1, -500, 1.5, "100", null, true, NaN]) {
-            assert.equal((await agent.post("/api/week/current/expenses").send({ itemName: "x", amount })).status, 400, String(amount));
+            assert.equal((await agent.post("/api/period/current/expenses").send({ itemName: "x", amount })).status, 400, String(amount));
         }
     });
 
     it("rejects absurdly large amounts that break the balance math", async () => {
         const { agent } = await newUser(app);
         for (const amount of [1e308, Number.MAX_SAFE_INTEGER + 2, 1e20]) {
-            const res = await agent.post("/api/week/current/expenses").send({ itemName: "x", amount });
+            const res = await agent.post("/api/period/current/expenses").send({ itemName: "x", amount });
             assert.equal(res.status, 400, `amount ${amount} was accepted`);
         }
-        const week = (await agent.get("/api/week/current")).body.week;
-        assert.ok(Number.isFinite(week.totalSpend), `totalSpend became ${week.totalSpend}`);
+        const period = (await agent.get("/api/period/current")).body.period;
+        assert.ok(Number.isFinite(period.totalSpend), `totalSpend became ${period.totalSpend}`);
     });
 
     it("rejects absurdly large weekly allowances", async () => {
@@ -443,7 +443,7 @@ describe("input validation and data integrity", () => {
 
     it("accepts values right at the limits", async () => {
         const { agent } = await newUser(app);
-        await agent.post("/api/week/current/expenses")
+        await agent.post("/api/period/current/expenses")
             .send({ itemName: "N".repeat(MAX_ITEM_NAME_LENGTH), category: "C".repeat(MAX_CATEGORY_LENGTH), amount: MAX_CENTS })
             .expect(201);
         await agent.patch("/api/settings").send({ weeklyAllowance: MAX_CENTS }).expect(200);
@@ -451,7 +451,7 @@ describe("input validation and data integrity", () => {
 
     it("rejects values one past the limits", async () => {
         const { agent } = await newUser(app);
-        const add = (body) => agent.post("/api/week/current/expenses").send({ itemName: "x", amount: 1, ...body });
+        const add = (body) => agent.post("/api/period/current/expenses").send({ itemName: "x", amount: 1, ...body });
         assert.equal((await add({ itemName: "N".repeat(MAX_ITEM_NAME_LENGTH + 1) })).status, 400);
         assert.equal((await add({ category: "C".repeat(MAX_CATEGORY_LENGTH + 1) })).status, 400);
         assert.equal((await add({ amount: MAX_CENTS + 1 })).status, 400);
@@ -460,12 +460,12 @@ describe("input validation and data integrity", () => {
 
     it("caps the number of expenses in a week", async () => {
         const { agent } = await newUser(app);
-        const week = (await agent.get("/api/week/current")).body.week;
+        const period = (await agent.get("/api/period/current")).body.period;
         const expenses = Array.from({ length: MAX_EXPENSES_PER_WEEK }, () => ({ itemName: "x", amount: 1 }));
-        await Week.updateOne({ _id: week._id }, { expenses, totalSpend: MAX_EXPENSES_PER_WEEK });
-        const res = await agent.post("/api/week/current/expenses").send({ itemName: "one too many", amount: 1 });
+        await Period.updateOne({ _id: period._id }, { expenses, totalSpend: MAX_EXPENSES_PER_WEEK });
+        const res = await agent.post("/api/period/current/expenses").send({ itemName: "one too many", amount: 1 });
         assert.equal(res.status, 409);
-        const after = await Week.findById(week._id);
+        const after = await Period.findById(period._id);
         assert.equal(after.expenses.length, MAX_EXPENSES_PER_WEEK);
         assert.equal(after.totalSpend, MAX_EXPENSES_PER_WEEK);
     });
@@ -473,8 +473,8 @@ describe("input validation and data integrity", () => {
     it("caps item name and category length", async () => {
         const { agent } = await newUser(app);
         const huge = "A".repeat(50_000);
-        assert.equal((await agent.post("/api/week/current/expenses").send({ itemName: huge, amount: 1 })).status, 400, "50k char item name accepted");
-        assert.equal((await agent.post("/api/week/current/expenses").send({ itemName: "x", category: huge, amount: 1 })).status, 400, "50k char category accepted");
+        assert.equal((await agent.post("/api/period/current/expenses").send({ itemName: huge, amount: 1 })).status, 400, "50k char item name accepted");
+        assert.equal((await agent.post("/api/period/current/expenses").send({ itemName: "x", category: huge, amount: 1 })).status, 400, "50k char category accepted");
     });
 
     it("caps email length", async () => {
@@ -484,7 +484,7 @@ describe("input validation and data integrity", () => {
 
     it("rejects request bodies over the size limit", async () => {
         const { agent } = await newUser(app);
-        const res = await agent.post("/api/week/current/expenses").send({ itemName: "A".repeat(200_000), amount: 1 });
+        const res = await agent.post("/api/period/current/expenses").send({ itemName: "A".repeat(200_000), amount: 1 });
         assert.equal(res.status, 413);
     });
 
@@ -499,7 +499,7 @@ describe("input validation and data integrity", () => {
     it("stores HTML in item names as plain text, not interpreted", async () => {
         const { agent } = await newUser(app);
         const payload = `<img src=x onerror=alert(1)>`;
-        const res = await agent.post("/api/week/current/expenses").send({ itemName: payload, amount: 1 });
+        const res = await agent.post("/api/period/current/expenses").send({ itemName: payload, amount: 1 });
         assert.equal(res.headers["content-type"].split(";")[0], "application/json");
         assert.equal(res.body.expenses.at(-1).itemName, payload);
     });
@@ -508,49 +508,49 @@ describe("input validation and data integrity", () => {
 describe("race conditions", () => {
     it("credits a closed week to the reserve exactly once under concurrent requests", async () => {
         const { agent, user } = await newUser(app);
-        await Week.create({
-            userId: user._id, weekKey: "2020-01-06", weekStart: new Date("2020-01-06"),
+        await Period.create({
+            userId: user._id, periodKey: "2020-01-06", periodStart: "2020-01-06", periodEnd: "2020-01-13",
             startingBalance: 10000, totalSpend: 2500,
         });
-        await Promise.all(Array.from({ length: 15 }, () => agent.get("/api/week/current")));
+        await Promise.all(Array.from({ length: 15 }, () => agent.get("/api/period/current")));
         const me = (await agent.get("/api/auth/me")).body;
         assert.equal(me.reserveCash, 7500);
     });
 
     it("refunds a deleted expense from a closed week exactly once under concurrent deletes", async () => {
         const { agent, user } = await newUser(app);
-        const week = await Week.create({
-            userId: user._id, weekKey: "2020-01-13", weekStart: new Date("2020-01-13"),
+        const period = await Period.create({
+            userId: user._id, periodKey: "2020-01-13", periodStart: "2020-01-13", periodEnd: "2020-01-20",
             startingBalance: 10000, totalSpend: 3000, expenses: [{ itemName: "x", amount: 3000 }],
             status: "closed", rollovertoReserve: 7000,
         });
         await User.updateOne({ _id: user._id }, { reserveCash: 7000 });
-        const path = `/api/week/${week._id}/expenses/${week.expenses[0]._id}`;
+        const path = `/api/period/${period._id}/expenses/${period.expenses[0]._id}`;
         const results = await Promise.all(Array.from({ length: 15 }, () => agent.delete(path)));
         assert.equal(results.filter(r => r.status === 200).length, 1);
         assert.equal((await agent.get("/api/auth/me")).body.reserveCash, 10000);
-        const saved = await Week.findById(week._id);
+        const saved = await Period.findById(period._id);
         assert.equal(saved.totalSpend, 0);
         assert.equal(saved.rollovertoReserve, 10000);
     });
 
     it("never lets concurrent adds lose an expense", async () => {
         const { agent } = await newUser(app);
-        await Promise.all(Array.from({ length: 20 }, (_, i) => agent.post("/api/week/current/expenses").send({ itemName: `i${i}`, amount: 10 })));
-        const week = (await agent.get("/api/week/current")).body.week;
-        assert.equal(week.expenses.length, 20);
-        assert.equal(week.totalSpend, 200);
+        await Promise.all(Array.from({ length: 20 }, (_, i) => agent.post("/api/period/current/expenses").send({ itemName: `i${i}`, amount: 10 })));
+        const period = (await agent.get("/api/period/current")).body.period;
+        assert.equal(period.expenses.length, 20);
+        assert.equal(period.totalSpend, 200);
     });
 });
 
 describe("CSRF and cross-origin", () => {
     it("ignores cross-site 'simple' requests that smuggle JSON as text/plain or form data", async () => {
         const { agent } = await newUser(app);
-        await agent.post("/api/week/current/expenses").set("Content-Type", "text/plain").send('{"itemName":"csrf","amount":100}');
-        await agent.post("/api/week/current/expenses").type("form").send({ itemName: "csrf", amount: 100 });
+        await agent.post("/api/period/current/expenses").set("Content-Type", "text/plain").send('{"itemName":"csrf","amount":100}');
+        await agent.post("/api/period/current/expenses").type("form").send({ itemName: "csrf", amount: 100 });
         await agent.patch("/api/settings").set("Content-Type", "text/plain").send('{"weeklyAllowance":1}');
-        const { week, user } = (await agent.get("/api/week/current")).body;
-        assert.equal(week.expenses.length, 0);
+        const { period, user } = (await agent.get("/api/period/current")).body;
+        assert.equal(period.expenses.length, 0);
         assert.equal(user.weeklyAllowance, 0);
     });
 
