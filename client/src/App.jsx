@@ -117,7 +117,7 @@ function App() {
     return (
         <div className="min-h-screen px-4 py-8">
             <Receipt>
-                <Topbar startDate={period.weekStart} kind={period.kind} onLogout={handleLogout} onOpenSettings={() => setSettingsOpen(true)} />
+                <Topbar startDate={period.periodStart} kind={period.kind} onLogout={handleLogout} onOpenSettings={() => setSettingsOpen(true)} />
                 <hr className="receipt-rule" />
                 {periodError && <p className="text-ink-red text-base">{periodError}</p>}
                 <PeriodExpenses expenses={expenses}

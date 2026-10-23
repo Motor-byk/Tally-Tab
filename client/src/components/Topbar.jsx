@@ -1,6 +1,6 @@
 export default function Topbar({startDate, kind = "week", onLogout, onOpenSettings}){
 
-    // startDate is stored as UTC midnight, so format in UTC to avoid showing the previous day
+    // a "YYYY-MM-DD" startDate parses as UTC midnight, so format in UTC to avoid showing the previous day
     const isMonth = kind === "month";
     const startLabel = startDate && new Date(startDate).toLocaleDateString(undefined, {
         timeZone: "UTC", month: "long", year: "numeric", ...(isMonth ? {} : { day: "numeric" }),
