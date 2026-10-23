@@ -9,9 +9,9 @@ const expenseSchema = new Schema({
     spentAt: {type: Date, default: Date.now},
 })
 
-const weekSchema = new Schema({
+// a budget period, stored in the "weeks" collection and keeping its week* field names from before months existed
+const periodSchema = new Schema({
     userId: {type:mongoose.Schema.Types.ObjectId, ref: "User", required: true},
-    // a budget period, named Week from before months existed
     kind: {type: String, enum: ["week", "month"], default: "week"},
     weekStart: {type: Date, required: true}, // UTC midnight of periodStart
     weekKey: {type: String, required: true}, // "YYYY-MM-DD" of the week, or "M:" + periodStart for months
@@ -25,7 +25,7 @@ const weekSchema = new Schema({
     rollovertoReserve:{ type: Number, default: 0},
 }, {timestamps: true});
 
-weekSchema.index({ userId: 1, weekKey: 1 }, { unique: true });
+periodSchema.index({ userId: 1, weekKey: 1 }, { unique: true });
 
-const Week = mongoose.model("Week", weekSchema)
-export default Week;
+const Period = mongoose.model("Period", periodSchema, "weeks")
+export default Period;

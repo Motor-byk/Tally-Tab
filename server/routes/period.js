@@ -1,21 +1,21 @@
 import express from "express";
 import mongoose from "mongoose";
-import Week from "../model/Week.js";
+import Period from "../model/Period.js";
 import User from "../model/User.js";
-import { getOrCreateCurrentWeek } from "../util/week.js";
+import { getOrCreateCurrentPeriod } from "../util/period.js";
 import { MAX_ITEM_NAME_LENGTH, MAX_CATEGORY_LENGTH, MAX_CENTS, MAX_EXPENSES_PER_WEEK, MAX_EXPENSES_PER_MONTH } from "../util/limits.js";
 
 const router = express.Router();
 
 router.get("/current", async (req, res) => {
     try {
-        const week = await getOrCreateCurrentWeek(req.userId);
-        if (!week) {
+        const period = await getOrCreateCurrentPeriod(req.userId);
+        if (!period) {
             return res.status(401).json({ message: "Not authenticated" });
         }
-        // re-fetch after the week lookup so the reserve includes any weeks it just closed
+        // re-fetch after the period lookup so the reserve includes any periods it just closed
         const user = await User.findById(req.userId).select("-passwordHash");
-        res.status(200).json({ week, user });
+        res.status(200).json({ period, user });
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: "Server error" });
@@ -41,15 +41,15 @@ router.post("/current/expenses", async (req, res) => {
             return res.status(400).json({ message: `Category must be ${MAX_CATEGORY_LENGTH} characters or less` });
         }
 
-        const week = await getOrCreateCurrentWeek(req.userId);
-        if (!week) {
+        const period = await getOrCreateCurrentPeriod(req.userId);
+        if (!period) {
             return res.status(401).json({ message: "Not authenticated" });
         }
 
         // the size check is part of the filter so concurrent adds can't push past the cap
-        const cap = week.kind === "month" ? MAX_EXPENSES_PER_MONTH : MAX_EXPENSES_PER_WEEK;
-        const updated = await Week.findOneAndUpdate(
-            { _id: week._id, [`expenses.${cap - 1}`]: { $exists: false } },
+        const cap = period.kind === "month" ? MAX_EXPENSES_PER_MONTH : MAX_EXPENSES_PER_WEEK;
+        const updated = await Period.findOneAndUpdate(
+            { _id: period._id, [`expenses.${cap - 1}`]: { $exists: false } },
             {
                 $push: { expenses: { itemName: itemName.trim(), category: (category ?? "").trim(), amount } },
                 $inc: { totalSpend: amount },
@@ -57,7 +57,7 @@ router.post("/current/expenses", async (req, res) => {
             { returnDocument: "after", runValidators: true }
         );
         if (!updated) {
-            return res.status(409).json({ message: `A ${week.kind} can have at most ${cap} expenses` });
+            return res.status(409).json({ message: `A ${period.kind} can have at most ${cap} expenses` });
         }
         res.status(201).json(updated);
     } catch (err) {
@@ -66,22 +66,22 @@ router.post("/current/expenses", async (req, res) => {
     }
 });
 
-router.delete("/:weekId/expenses/:expenseId", async (req, res) => {
+router.delete("/:periodId/expenses/:expenseId", async (req, res) => {
     try {
-        const { weekId, expenseId } = req.params;
-        if (!mongoose.isValidObjectId(weekId) || !mongoose.isValidObjectId(expenseId)) {
+        const { periodId, expenseId } = req.params;
+        if (!mongoose.isValidObjectId(periodId) || !mongoose.isValidObjectId(expenseId)) {
             return res.status(404).json({ message: "Expense not found" });
         }
 
-        const week = await Week.findOne({ _id: weekId, userId: req.userId });
-        const expense = week?.expenses.id(expenseId);
+        const period = await Period.findOne({ _id: periodId, userId: req.userId });
+        const expense = period?.expenses.id(expenseId);
         if (!expense) {
             return res.status(404).json({ message: "Expense not found" });
         }
 
         // match on the expense id so a concurrent delete can't decrement totalSpend twice
-        const updated = await Week.findOneAndUpdate(
-            { _id: weekId, userId: req.userId, "expenses._id": expenseId },
+        const updated = await Period.findOneAndUpdate(
+            { _id: periodId, userId: req.userId, "expenses._id": expenseId },
             {
                 $pull: { expenses: { _id: expenseId } },
                 $inc: { totalSpend: -expense.amount },
@@ -92,10 +92,10 @@ router.delete("/:weekId/expenses/:expenseId", async (req, res) => {
             return res.status(404).json({ message: "Expense not found" });
         }
         if (updated.status === "closed") {
-            // the week's leftover already went to the reserve, so give the refunded amount back too
+            // the period's leftover already went to the reserve, so give the refunded amount back too
             await User.updateOne({ _id: req.userId }, { $inc: { reserveCash: expense.amount } });
-            const adjusted = await Week.findByIdAndUpdate(
-                weekId,
+            const adjusted = await Period.findByIdAndUpdate(
+                periodId,
                 { $inc: { rollovertoReserve: expense.amount } },
                 { returnDocument: "after" }
             );

@@ -1,5 +1,5 @@
 import Topbar from "./components/Topbar";
-import WeeklyExpenses from "./components/WeeklyExpenses";
+import PeriodExpenses from "./components/PeriodExpenses";
 import Bottominput from "./components/Bottominput";
 import AuthForm from "./components/AuthForm";
 import Settings from "./components/Settings";
@@ -8,7 +8,7 @@ import { toStringCents } from "./util/expenseCalc";
 import { useState, useEffect } from "react";
 
 // throws the server's error message so callers can show it
-async function requestWeek(url, options) {
+async function request(url, options) {
     const response = await fetch(url, options);
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -30,8 +30,8 @@ function StatusScreen({message, error}) {
 function App() {
     const [user, setUser] = useState(null);
     const [authChecked, setAuthChecked] = useState(false);
-    const [week, setWeek] = useState(null);
-    const [weekError, setWeekError] = useState("");
+    const [period, setPeriod] = useState(null);
+    const [periodError, setPeriodError] = useState("");
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [deletingId, setDeletingId] = useState(null);
 
@@ -45,55 +45,55 @@ function App() {
             .finally(() => setAuthChecked(true));
     },[]);
 
-    // keyed on the id so refreshing the user from the response doesn't refetch the week
+    // keyed on the id so refreshing the user from the response doesn't refetch the period
     const userId = user?._id;
     useEffect(() => {
         if (!userId) {
             return;
         }
-        requestWeek("/api/week/current")
+        request("/api/period/current")
             .then((data) => {
-                setWeek(data.week);
+                setPeriod(data.period);
                 setUser(data.user);
             })
-            .catch((error) => setWeekError(error.message));
+            .catch((error) => setPeriodError(error.message));
     }, [userId]);
 
     async function handleLogout() {
         await fetch("/api/auth/logout", {method: "POST"});
         setUser(null);
-        setWeek(null);
-        setWeekError("");
+        setPeriod(null);
+        setPeriodError("");
         setSettingsOpen(false);
     }
 
     async function handleSaveSettings(settings) {
-        const data = await requestWeek("/api/settings", {
+        const data = await request("/api/settings", {
             method: "PATCH",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify(settings),
         });
         setUser(data.user);
-        setWeek(data.week);
+        setPeriod(data.period);
         setSettingsOpen(false);
     }
 
     async function handleAddExpense(itemName, amount, category) {
-        const data = await requestWeek("/api/week/current/expenses", {
+        const data = await request("/api/period/current/expenses", {
             method: "POST",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({itemName, amount, category}),
         });
-        setWeek(data);
+        setPeriod(data);
     }
 
     async function handleDeleteExpense(expenseId) {
         setDeletingId(expenseId);
         try {
-            const data = await requestWeek(`/api/week/${week._id}/expenses/${expenseId}`, {method: "DELETE"});
-            setWeek(data);
+            const data = await request(`/api/period/${period._id}/expenses/${expenseId}`, {method: "DELETE"});
+            setPeriod(data);
         } catch (error) {
-            setWeekError(error.message);
+            setPeriodError(error.message);
         } finally {
             setDeletingId(null);
         }
@@ -107,25 +107,25 @@ function App() {
         return <AuthForm onAuth={setUser} />;
     }
 
-    if (!week) {
-        return <StatusScreen message="Printing..." error={weekError} />;
+    if (!period) {
+        return <StatusScreen message="Printing..." error={periodError} />;
     }
 
-    const { expenses, startingBalance, totalSpend } = week;
+    const { expenses, startingBalance, totalSpend } = period;
     const currentBalance = startingBalance - totalSpend
 
     return (
         <div className="min-h-screen px-4 py-8">
             <Receipt>
-                <Topbar weekStart={week.weekStart} kind={week.kind} onLogout={handleLogout} onOpenSettings={() => setSettingsOpen(true)} />
+                <Topbar startDate={period.weekStart} kind={period.kind} onLogout={handleLogout} onOpenSettings={() => setSettingsOpen(true)} />
                 <hr className="receipt-rule" />
-                {weekError && <p className="text-ink-red text-base">{weekError}</p>}
-                <WeeklyExpenses expenses={expenses}
+                {periodError && <p className="text-ink-red text-base">{periodError}</p>}
+                <PeriodExpenses expenses={expenses}
                     startingBalance={startingBalance}
                     currentBalance={currentBalance}
                     reserve={user.reserveCash}
                     projectedReserve={currentBalance < 0 ? user.reserveCash + currentBalance : undefined}
-                    kind={week.kind}
+                    kind={period.kind}
                     deletingId={deletingId}
                     onDelete={handleDeleteExpense}/>
                 <hr className="receipt-rule" />

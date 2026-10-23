@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { currentWeekKey, weekStartFromKey, localDateKey, monthBounds, addDays, periodRange } from "./week.js";
+import { currentWeekKey, dateFromKey, localDateKey, monthBounds, addDays, periodRange } from "./period.js";
 
 describe("currentWeekKey()", () => {
     it("returns the monday of the week when weeks start on monday", () => {
@@ -33,9 +33,9 @@ describe("currentWeekKey()", () => {
     });
 });
 
-describe("weekStartFromKey()", () => {
+describe("dateFromKey()", () => {
     it("returns UTC midnight of the key's date", () => {
-        assert.equal(weekStartFromKey("2026-09-14").toISOString(), "2026-09-14T00:00:00.000Z");
+        assert.equal(dateFromKey("2026-09-14").toISOString(), "2026-09-14T00:00:00.000Z");
     });
 });
 
