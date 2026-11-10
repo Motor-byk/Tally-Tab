@@ -19,7 +19,7 @@ A budgeting app for tracking spending against a weekly or monthly allowance. Eac
 | Client | React 19, Vite, Tailwind CSS 4, Vitest |
 | Server | Node 20+, Express 5, Mongoose (MongoDB), JWT, bcrypt, Helmet |
 | Tests  | `node --test`, Supertest, mongodb-memory-server |
-| Deploy | Render (`render.yaml`) or Vercel (`vercel.json`) |
+| Deploy | Vercel (`vercel.json`) |
 
 ## Project structure
 
@@ -32,7 +32,7 @@ A budgeting app for tracking spending against a weekly or monthly allowance. Eac
 │       └── util/       # expense math (+ tests)
 ├── server/
 │   ├── app.js          # Express app: middleware, routes, static client
-│   ├── index.js        # Long-running server entry (Render / local)
+│   ├── index.js        # Long-running server entry (local dev / npm start)
 │   ├── configuration/  # MongoDB connection (cached across invocations)
 │   ├── middleware/     # requireAuth, rate limiting
 │   ├── model/          # User, Period, RevokedToken, RateLimit
@@ -40,7 +40,6 @@ A budgeting app for tracking spending against a weekly or monthly allowance. Eac
 │   ├── scripts/        # one-off data migrations
 │   ├── util/           # period/date logic, input limits
 │   └── tests/
-├── render.yaml
 └── vercel.json
 ```
 
@@ -144,13 +143,7 @@ All routes are under `/api`. Every route except `health`, `register`, `login`, a
 
 ## Deployment
 
-### Render
-
-`render.yaml` defines a single Node web service that runs `npm run build` and `npm start`, with a health check at `/api/health`. Set `ATLAS_URI` in the Render dashboard. Render generates `JWT_SECRET` for you.
-
-### Vercel
-
-`vercel.json` builds the client into `client/dist` and sends `/api/*` to the serverless function in `api/index.js`. All other paths fall back to `index.html`. Set `ATLAS_URI` and `JWT_SECRET` (and `NODE_ENV=production`) in the project's environment variables.
+The app is deployed on Vercel. `vercel.json` builds the client into `client/dist` and sends `/api/*` to the serverless function in `api/index.js`. All other paths fall back to `index.html`. Set `ATLAS_URI` and `JWT_SECRET` (and `NODE_ENV=production`) in the project's environment variables.
 
 The security headers are defined in two places: in `server/app.js` (Helmet) and in `vercel.json`, which covers static files on Vercel. If you change one, change the other to match.
 

@@ -21,7 +21,7 @@ const isProduction = process.env.NODE_ENV === "production";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const clientDist = path.join(__dirname, "../client/dist");
 
-// vercel and render sit in front of us, so take the client ip from their X-Forwarded-For
+// vercel sits in front of us, so take the client ip from its X-Forwarded-For
 app.set("trust proxy", 1);
 
 // keep in sync with the headers in vercel.json, which serves the static files there
