@@ -1,4 +1,4 @@
-# Personal Expense Tracker
+# Tally Tab
 
 A budgeting app for tracking spending against a weekly or monthly allowance. Each budget period starts with a set balance, and you log expenses against it as you go. When a period ends, whatever is left over (or overspent) rolls into a running **reserve**.
 
